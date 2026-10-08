@@ -2,7 +2,6 @@ package com.lesson.schedule.controller;
 
 import com.lesson.schedule.common.Result;
 import com.lesson.schedule.common.dto.IdDTO;
-import com.lesson.schedule.common.dto.TimeSlotSortDTO;
 import com.lesson.schedule.entity.TimeSlot;
 import com.lesson.schedule.service.TimeSlotService;
 import java.util.List;
@@ -13,7 +12,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 时间段管理（S02）。路径对齐概设 §2.4.2 BE-API-06~10。
+ * 时间段管理（S02）。路径对齐概设 §2.4.2 BE-API-06~09（BE-API-10 排序端点已废弃删除）。
  * 统一 POST + 动作化路径，参数全部走 {@code @RequestBody}。
  * 注意：TimeSlot 实体无 name 字段（概设 BE-API-07/08 示例中的 name 不在表结构中，本次不加字段，待确认）。
  */
@@ -24,7 +23,7 @@ public class TimeSlotController {
 
     private final TimeSlotService timeSlotService;
 
-    /** BE-API-06 列表（按 sortOrder）。无入参。 */
+    /** BE-API-06 列表（按 start_time 升序）。无入参。 */
     @PostMapping("/list")
     public Result<List<TimeSlot>> list() {
         return Result.success(timeSlotService.listAll());
@@ -50,10 +49,4 @@ public class TimeSlotController {
         return Result.success();
     }
 
-    /** BE-API-10 排序调整（批量 [{id, sortOrder}]）。入参：有序主键列表。 */
-    @PostMapping("/sort")
-    public Result<Void> sort(@RequestBody List<TimeSlotSortDTO> items) {
-        timeSlotService.updateSort(items);
-        return Result.success();
-    }
 }

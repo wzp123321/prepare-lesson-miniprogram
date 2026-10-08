@@ -6,18 +6,18 @@ import {
   fetchTimeSlots,
   createTimeSlot,
   updateTimeSlot,
-  deleteTimeSlot,
-  sortTimeSlots
+  deleteTimeSlot
 } from '@/api/timeSlot'
 import type { TimeSlot } from '@/types'
-import { isConflict, errMsg } from '@/api/mockData'
+import { isConflict, errMsg } from '@/utils/error'
 
 interface SlotForm {
   id: number | undefined
   startTime: string
   endTime: string
   sortOrder: number
-  enabled: boolean
+  /** 启用 1 / 停用 0（与后端 time_slot.enabled TINYINT 对齐） */
+  enabled: 0 | 1
 }
 
 const loading = ref(false)
@@ -33,7 +33,7 @@ const form = reactive<SlotForm>({
   startTime: '09:00:00',
   endTime: '10:30:00',
   sortOrder: 1,
-  enabled: true
+  enabled: 1
 })
 
 const rules = {
@@ -68,7 +68,7 @@ function openAdd(): void {
     startTime: '09:00:00',
     endTime: '10:30:00',
     sortOrder: list.value.length + 1,
-    enabled: true
+    enabled: 1
   })
   dialogVisible.value = true
 }
@@ -128,31 +128,8 @@ async function onSubmit(): Promise<void> {
 
 async function onToggleEnabled(row: TimeSlot, val: boolean | string | number): Promise<void> {
   try {
-    await updateTimeSlot(row.id, { enabled: Boolean(val) })
+    await updateTimeSlot(row.id, { enabled: val ? 1 : 0 })
     ElMessage.success('启用状态已更新')
-  } catch (e) {
-    ElMessage.error(errMsg(e))
-    loadList()
-  }
-}
-
-// 排序调整：与相邻项交换 sortOrder 并提交 BE-API-10
-async function move(index: number, dir: -1 | 1): Promise<void> {
-  const target = list.value[index + dir]
-  if (!target) return
-  const a = list.value[index]
-  const b = target
-  const aOrder = a.sortOrder
-  const bOrder = b.sortOrder
-  a.sortOrder = bOrder
-  b.sortOrder = aOrder
-  try {
-    await sortTimeSlots([
-      { id: a.id, sortOrder: a.sortOrder },
-      { id: b.id, sortOrder: b.sortOrder }
-    ])
-    ElMessage.success('排序已保存')
-    loadList()
   } catch (e) {
     ElMessage.error(errMsg(e))
     loadList()
@@ -195,37 +172,25 @@ onMounted(loadList)
 
 <template>
   <el-card>
-    <template #header>
-      <div class="card-header">
-        <span>时间段管理</span>
-        <el-button type="primary" @click="openAdd">新增时间段</el-button>
-      </div>
-    </template>
+    <!-- 工具条：左说明、右主操作 -->
+    <div class="toolbar">
+      <span class="hint">按开始时间升序排列</span>
+      <el-button type="primary" @click="openAdd">
+        <el-icon><Plus /></el-icon>
+        <span>新增时间段</span>
+      </el-button>
+    </div>
 
-    <el-table v-loading="loading" :data="list" border stripe empty-text="暂无时间段">
-      <el-table-column label="排序" min-width="160" align="center">
-        <template #default="{ $index }">
-          <el-button
-            link
-            type="primary"
-            :disabled="$index === 0"
-            @click="move($index, -1)"
-          >↑ 上移</el-button>
-          <el-button
-            link
-            type="primary"
-            :disabled="$index === list.length - 1"
-            @click="move($index, 1)"
-          >↓ 下移</el-button>
-        </template>
-      </el-table-column>
+    <el-table v-loading="loading" :data="list" empty-text="暂无时间段">
+      <el-table-column type="index" label="#" width="60" align="center" />
       <el-table-column prop="startTime" label="开始时间" min-width="120" align="center" />
       <el-table-column prop="endTime" label="结束时间" min-width="120" align="center" />
-      <el-table-column prop="sortOrder" label="排序值" min-width="90" align="center" />
       <el-table-column label="启用" min-width="100" align="center">
         <template #default="{ row }">
           <el-switch
             :model-value="row.enabled"
+            :active-value="1"
+            :inactive-value="0"
             @change="(val: boolean | string | number) => onToggleEnabled(row, val)"
           />
         </template>
@@ -261,11 +226,8 @@ onMounted(loadList)
             placeholder="选择结束时间"
           />
         </el-form-item>
-        <el-form-item label="排序值">
-          <el-input-number v-model="form.sortOrder" :min="1" />
-        </el-form-item>
         <el-form-item label="启用">
-          <el-switch v-model="form.enabled" />
+          <el-switch v-model="form.enabled" :active-value="1" :inactive-value="0" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -277,9 +239,15 @@ onMounted(loadList)
 </template>
 
 <style scoped>
-.card-header {
+.toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.hint {
+  font-size: 12px;
+  color: var(--text-muted);
 }
 </style>

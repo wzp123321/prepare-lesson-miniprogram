@@ -44,8 +44,11 @@ public class Lesson {
     /** 待补关闭 0 未关闭 / 1 已关闭（与 status 正交） */
     private Integer closed;
 
-    /** 备注（选填） */
+    /** 排课备注（选填） */
     private String remark;
+
+    /** 备课备注（选填）。与排课备注 remark 分开存放，避免两者抢同一列 */
+    private String prepRemark;
 
     private LocalDateTime createTime;
     private LocalDateTime updateTime;

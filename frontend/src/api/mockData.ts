@@ -1,39 +1,30 @@
-// Wave 2 本地 mock 数据兜底层（仅前端演示 / 联调前可用）
+// 本地 mock 数据兜底层（仅联调前的演示用）
 //
-// 后端 Wave A（BE-API-01~14、26~29）就绪前，各 api 模块以 USE_MOCK=true 走本文件内存数据，
-// 保证列表/表单交互在沙箱内可完整演示。
-// TODO(W5-03): 后端就绪后，将各 api 模块的 USE_MOCK 改为 false，走真实 /api 路径，本文件即可停用。
+// 各 api 模块保留 USE_MOCK 分支指向本文件的内存数据；当前所有模块 USE_MOCK 均为 false，
+// 走真实 /api 路径。若后端不可用需临时演示，可把对应模块的 USE_MOCK 置回 true。
+//
+// 注意：通用工具函数已迁出本文件（原寄居在此导致本文件无法退场）——
+//   错误处理 errMsg / isConflict → utils/error.ts
+//   颜色分配 autoColor            → utils/color.ts
 
 import type { Student, TimeSlot, Course, Dict } from '@/types'
 
-/** 专属颜色调色板（新增学生自动分配用） */
-export const COLOR_PALETTE = [
-  '#409EFF',
-  '#67C23A',
-  '#E6A23C',
-  '#F56C6C',
-  '#909399',
-  '#9254DE',
-  '#13C2C2',
-  '#EB2F96'
-]
-
 /** S07 年级字典（mock） */
 export const mockGrades: Dict[] = [
-  { id: 1, dictType: 'grade', dictValue: '一年级', sortOrder: 1, enabled: true },
-  { id: 2, dictType: 'grade', dictValue: '二年级', sortOrder: 2, enabled: true },
-  { id: 3, dictType: 'grade', dictValue: '三年级', sortOrder: 3, enabled: true },
-  { id: 4, dictType: 'grade', dictValue: '四年级', sortOrder: 4, enabled: true },
-  { id: 5, dictType: 'grade', dictValue: '五年级', sortOrder: 5, enabled: true },
-  { id: 6, dictType: 'grade', dictValue: '六年级', sortOrder: 6, enabled: true }
+  { id: 1, dictType: 'grade', dictValue: '一年级', sortOrder: 1, enabled: 1 },
+  { id: 2, dictType: 'grade', dictValue: '二年级', sortOrder: 2, enabled: 1 },
+  { id: 3, dictType: 'grade', dictValue: '三年级', sortOrder: 3, enabled: 1 },
+  { id: 4, dictType: 'grade', dictValue: '四年级', sortOrder: 4, enabled: 1 },
+  { id: 5, dictType: 'grade', dictValue: '五年级', sortOrder: 5, enabled: 1 },
+  { id: 6, dictType: 'grade', dictValue: '六年级', sortOrder: 6, enabled: 1 }
 ]
 
 /** S07 顺延原因字典（mock） */
 export const mockAbsentReasons: Dict[] = [
-  { id: 11, dictType: 'absent_reason', dictValue: '学生病假', sortOrder: 1, enabled: true },
-  { id: 12, dictType: 'absent_reason', dictValue: '学生事假', sortOrder: 2, enabled: true },
-  { id: 13, dictType: 'absent_reason', dictValue: '老师请假', sortOrder: 3, enabled: true },
-  { id: 14, dictType: 'absent_reason', dictValue: '法定节假日', sortOrder: 4, enabled: true }
+  { id: 11, dictType: 'absent_reason', dictValue: '学生病假', sortOrder: 1, enabled: 1 },
+  { id: 12, dictType: 'absent_reason', dictValue: '学生事假', sortOrder: 2, enabled: 1 },
+  { id: 13, dictType: 'absent_reason', dictValue: '老师请假', sortOrder: 3, enabled: 1 },
+  { id: 14, dictType: 'absent_reason', dictValue: '法定节假日', sortOrder: 4, enabled: 1 }
 ]
 
 /** S01 学生（mock） */
@@ -84,10 +75,10 @@ export const mockStudents: Student[] = [
 
 /** S02 时间段（mock） */
 export const mockTimeSlots: TimeSlot[] = [
-  { id: 1, startTime: '09:00:00', endTime: '10:30:00', sortOrder: 1, enabled: true },
-  { id: 2, startTime: '10:30:00', endTime: '12:00:00', sortOrder: 2, enabled: true },
-  { id: 3, startTime: '14:00:00', endTime: '15:30:00', sortOrder: 3, enabled: true },
-  { id: 4, startTime: '15:30:00', endTime: '17:00:00', sortOrder: 4, enabled: false }
+  { id: 1, startTime: '09:00:00', endTime: '10:30:00', sortOrder: 1, enabled: 1 },
+  { id: 2, startTime: '10:30:00', endTime: '12:00:00', sortOrder: 2, enabled: 1 },
+  { id: 3, startTime: '14:00:00', endTime: '15:30:00', sortOrder: 3, enabled: 1 },
+  { id: 4, startTime: '15:30:00', endTime: '17:00:00', sortOrder: 4, enabled: 0 }
 ]
 
 /** S03 课程（每生一门语文课，price 取自学生，mock） */
@@ -97,23 +88,5 @@ export const mockCourses: Course[] = mockStudents.map((s, i) => ({
   subject: '语文',
   price: s.price,
   remark: '',
-  enabled: true
+  enabled: 1
 }))
-
-/** 自动分配一个未被占用专属颜色 */
-export function autoColor(used: string[]): string {
-  const free = COLOR_PALETTE.find((c) => !used.includes(c))
-  return free || COLOR_PALETTE[Math.floor(Math.random() * COLOR_PALETTE.length)]
-}
-
-/** 判断错误是否为 409 冲突（删除保护 / 重叠 / 重复建课） */
-export function isConflict(e: unknown): boolean {
-  return (e as { response?: { status?: number } })?.response?.status === 409
-}
-
-/** 提取错误信息文案（统一返回体或 Error.message） */
-export function errMsg(e: unknown): string {
-  const respMsg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message
-  const msg = (e as { message?: string })?.message
-  return respMsg || msg || '操作失败'
-}

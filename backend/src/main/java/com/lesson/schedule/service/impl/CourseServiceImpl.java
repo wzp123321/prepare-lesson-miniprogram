@@ -61,4 +61,14 @@ public class CourseServiceImpl implements CourseService {
         course.setEnabled(0);
         courseMapper.updateById(course);
     }
+
+    @Override
+    public void enable(Long id) {
+        Course course = courseMapper.selectById(id);
+        if (course == null) {
+            throw new BusinessException(404, "课程不存在");
+        }
+        course.setEnabled(1);
+        courseMapper.updateById(course);
+    }
 }

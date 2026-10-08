@@ -10,6 +10,13 @@
 #    亦可改用环境变量：DB_USER / DB_PASSWORD
 # ============================================================
 spring:
+  # 智能排课 DeepSeek：默认取 application.yml 的 spring.ai.openai.api-key。
+  # ⚠️ 生产建议不要写在文件里，改用启动参数 / 环境变量注入：
+  #     --AI_DEEPSEEK_API_KEY=sk-xxx    或    setx AI_DEEPSEEK_API_KEY "sk-xxx"
+  # 如需在本文件写死，取消下面注释：
+  # ai:
+  #   openai:
+  #     api-key: sk-生产专用key
   datasource:
     # characterEncoding 取 Java 字符集名 UTF-8（不是 MySQL 的 utf8mb4）
     # useSSL=false：47.116.35.76 未配置 SSL 证书（用户确认），开启会连不上

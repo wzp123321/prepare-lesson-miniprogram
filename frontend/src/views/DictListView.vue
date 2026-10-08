@@ -4,14 +4,15 @@ import { onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { fetchDicts, createDict, updateDict, deleteDict } from '@/api/dict'
 import type { Dict } from '@/types'
-import { errMsg } from '@/api/mockData'
+import { errMsg } from '@/utils/error'
 
 interface DictForm {
   id: number | undefined
   dictType: string
   dictValue: string
   sortOrder: number
-  enabled: boolean
+  /** 启用 1 / 停用 0（与后端 dict.enabled TINYINT 对齐） */
+  enabled: 0 | 1
 }
 
 const activeType = ref<'grade' | 'absent_reason'>('grade')
@@ -30,7 +31,7 @@ const form = reactive<DictForm>({
   dictType: 'grade',
   dictValue: '',
   sortOrder: 1,
-  enabled: true
+  enabled: 1
 })
 
 const rules = {
@@ -55,7 +56,7 @@ function openAdd(): void {
     dictType: activeType.value,
     dictValue: '',
     sortOrder: list.value.length + 1,
-    enabled: true
+    enabled: 1
   })
   dialogVisible.value = true
 }
@@ -120,19 +121,19 @@ onMounted(loadList)
 
 <template>
   <el-card>
-    <template #header>字典管理</template>
-
-    <el-tabs v-model="activeType">
-      <el-tab-pane label="年级" name="grade" />
-      <el-tab-pane label="顺延原因" name="absent_reason" />
-    </el-tabs>
-
+    <!-- 工具条：类型页签在左、新增按钮在右 -->
     <div class="toolbar">
-      <span class="toolbar-title">当前类型：{{ typeLabel[activeType] }}</span>
-      <el-button type="primary" @click="openAdd">新增{{ typeLabel[activeType] }}</el-button>
+      <el-tabs v-model="activeType" class="type-tabs">
+        <el-tab-pane label="年级" name="grade" />
+        <el-tab-pane label="顺延原因" name="absent_reason" />
+      </el-tabs>
+      <el-button type="primary" class="add-btn" @click="openAdd">
+        <el-icon><Plus /></el-icon>
+        <span>新增{{ typeLabel[activeType] }}</span>
+      </el-button>
     </div>
 
-    <el-table v-loading="loading" :data="list" border stripe empty-text="暂无字典项">
+    <el-table v-loading="loading" :data="list" empty-text="暂无字典项">
       <el-table-column prop="dictValue" label="字典值" min-width="160" />
       <el-table-column prop="sortOrder" label="排序值" min-width="100" align="center" />
       <el-table-column label="启用" min-width="100" align="center">
@@ -162,7 +163,7 @@ onMounted(loadList)
           <el-input-number v-model="form.sortOrder" :min="1" />
         </el-form-item>
         <el-form-item label="启用">
-          <el-switch v-model="form.enabled" />
+          <el-switch v-model="form.enabled" :active-value="1" :inactive-value="0" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -176,12 +177,19 @@ onMounted(loadList)
 <style scoped>
 .toolbar {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: space-between;
-  margin-bottom: 16px;
+  gap: 12px;
+  margin-bottom: 14px;
 }
-.toolbar-title {
-  font-size: 13px;
-  color: #606266;
+.type-tabs {
+  flex: 1;
+  min-width: 0;
+}
+.type-tabs :deep(.el-tabs__header) {
+  margin-bottom: 0;
+}
+.add-btn {
+  margin-bottom: 6px;
 }
 </style>

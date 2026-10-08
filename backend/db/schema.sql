@@ -65,7 +65,8 @@ CREATE TABLE IF NOT EXISTS lesson (
     absent_reason   VARCHAR(255) DEFAULT NULL           COMMENT '顺延原因（ABSENT 时必填）',
     make_up_date    DATE        DEFAULT NULL            COMMENT '补课日期（可跨月，不占新格；仅 MADEUP 承载）',
     closed          TINYINT     NOT NULL DEFAULT 0      COMMENT '待补关闭 0 未关闭 / 1 已关闭（与 status 正交）',
-    remark          VARCHAR(500) DEFAULT NULL           COMMENT '备注',
+    remark          VARCHAR(500) DEFAULT NULL           COMMENT '排课备注',
+    prep_remark     VARCHAR(500) DEFAULT NULL           COMMENT '备课备注（与排课备注分开）',
     create_time     DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     update_time     DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
@@ -87,3 +88,188 @@ CREATE TABLE IF NOT EXISTS dict (
     PRIMARY KEY (id),
     KEY idx_dict_type (dict_type)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='字典';
+
+-- ============================================================
+-- 字典预置数据：年级（grade）/ 顺延原因（absent_reason）
+-- 幂等写法：同 dict_type + dict_value 已存在则跳过，脚本可重复执行
+-- ============================================================
+INSERT INTO dict (dict_type, dict_value, sort_order, enabled)
+SELECT s.dict_type, s.dict_value, s.sort_order, 1
+FROM (
+              SELECT 'grade'         AS dict_type, '一年级'   AS dict_value, 1 AS sort_order
+    UNION ALL SELECT 'grade',                      '二年级',                2
+    UNION ALL SELECT 'grade',                      '三年级',                3
+    UNION ALL SELECT 'grade',                      '四年级',                4
+    UNION ALL SELECT 'grade',                      '五年级',                5
+    UNION ALL SELECT 'grade',                      '六年级',                6
+    UNION ALL SELECT 'absent_reason',              '学生病假',              1
+    UNION ALL SELECT 'absent_reason',              '学生事假',              2
+    UNION ALL SELECT 'absent_reason',              '老师请假',              3
+    UNION ALL SELECT 'absent_reason',              '法定节假日',            4
+) s
+WHERE NOT EXISTS (
+    SELECT 1 FROM dict d
+    WHERE d.dict_type = s.dict_type AND d.dict_value = s.dict_value
+);
+
+-- ============================================================
+-- 备课模块（一期）
+--   备课方式：按「年级 + 知识点」准备一份试题，上课通过试题讲解知识点（以题带点）
+--   链路：知识点 → 题库 → 试卷(可派生) → 课次(挑知识点 + 挑卷)
+-- ============================================================
+
+-- 知识点
+CREATE TABLE IF NOT EXISTS knowledge_point (
+    id          BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键',
+    name        VARCHAR(100) NOT NULL                COMMENT '知识点名称，如「修辞手法」',
+    grade       VARCHAR(32)  DEFAULT NULL            COMMENT '适用年级（dict.grade），空=通用',
+    category    VARCHAR(32)  DEFAULT NULL            COMMENT '大类：字词/句子/阅读/古诗文/写作/基础',
+    parent_id   BIGINT       DEFAULT NULL            COMMENT '父知识点（可选，支持二级）',
+    sort_order  INT          NOT NULL DEFAULT 0      COMMENT '排序',
+    enabled     TINYINT      NOT NULL DEFAULT 1      COMMENT '启用 1/0',
+    create_time DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    update_time DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_kp_grade (grade),
+    KEY idx_kp_parent (parent_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='语文知识点';
+
+-- 题目（独立题库，可被多份试卷引用）
+CREATE TABLE IF NOT EXISTS question (
+    id          BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键',
+    grade       VARCHAR(32)  DEFAULT NULL            COMMENT '年级',
+    kp_id       BIGINT       DEFAULT NULL            COMMENT '考查知识点',
+    student_id  BIGINT       DEFAULT NULL            COMMENT '归属学生，NULL=通用题库（派生卷克隆出的题带学生）',
+    qtype       VARCHAR(32)  DEFAULT NULL            COMMENT '题型：选择/填空/判断/阅读/古诗文/写作/其他',
+    stem        TEXT         NOT NULL                COMMENT '题干',
+    options     JSON         DEFAULT NULL            COMMENT '选择题选项 ["A. …","B. …"]',
+    answer      VARCHAR(1000) DEFAULT NULL           COMMENT '答案',
+    analysis    VARCHAR(2000) DEFAULT NULL           COMMENT '解析（讲题要点）',
+    difficulty  TINYINT      NOT NULL DEFAULT 2      COMMENT '难度 1易/2中/3难',
+    source      VARCHAR(200) DEFAULT NULL            COMMENT '来源备注，如「2024 期末卷」',
+    create_time DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    update_time DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_q_kp (kp_id),
+    KEY idx_q_grade (grade),
+    KEY idx_q_student (student_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='题库';
+
+-- 试卷（通用卷 / 学生派生卷）
+CREATE TABLE IF NOT EXISTS paper (
+    id              BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键',
+    title           VARCHAR(200) NOT NULL                COMMENT '卷名，如「五年级 修辞手法 专项」',
+    grade           VARCHAR(32)  DEFAULT NULL            COMMENT '年级',
+    paper_type      VARCHAR(20)  NOT NULL DEFAULT 'KP'   COMMENT 'KP 知识点专项卷 / LESSON 课时题单',
+    student_id      BIGINT       DEFAULT NULL            COMMENT '归属学生，NULL=通用卷',
+    parent_paper_id BIGINT       DEFAULT NULL            COMMENT '派生自哪份卷（clone 溯源）',
+    status          VARCHAR(20)  NOT NULL DEFAULT 'DRAFT' COMMENT 'DRAFT 草稿 / READY 可用',
+    remark          VARCHAR(500) DEFAULT NULL            COMMENT '备注',
+    create_time     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    update_time     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_paper_grade (grade),
+    KEY idx_paper_student (student_id),
+    KEY idx_paper_type (paper_type)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='试卷';
+
+-- 试卷-题目编排
+CREATE TABLE IF NOT EXISTS paper_question (
+    id          BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键',
+    paper_id    BIGINT NOT NULL                COMMENT '试卷',
+    question_id BIGINT NOT NULL                COMMENT '题目',
+    sort_order  INT    NOT NULL DEFAULT 0      COMMENT '题号顺序',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_paper_q (paper_id, question_id),
+    KEY idx_pq_question (question_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='试卷-题目编排';
+
+-- 课次-知识点（一课多点）
+CREATE TABLE IF NOT EXISTS lesson_knowledge (
+    id        BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键',
+    lesson_id BIGINT NOT NULL                COMMENT '排课课次',
+    kp_id     BIGINT NOT NULL                COMMENT '本节讲的知识点',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_lesson_kp (lesson_id, kp_id),
+    KEY idx_lk_kp (kp_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='课次-知识点';
+
+-- 课次-试卷（一课可多卷）
+CREATE TABLE IF NOT EXISTS lesson_paper (
+    id        BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键',
+    lesson_id BIGINT NOT NULL                COMMENT '排课课次',
+    paper_id  BIGINT NOT NULL                COMMENT '本节使用的试卷',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_lesson_paper (lesson_id, paper_id),
+    KEY idx_lp_paper (paper_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='课次-试卷';
+
+-- ============================================================
+-- 知识点预置数据（小学语文，按年级分组；可增删改停用）
+-- 幂等写法：同 (grade, name) 已存在则跳过，脚本可重复执行
+-- ============================================================
+INSERT INTO knowledge_point (name, grade, category, sort_order, enabled)
+SELECT s.name, s.grade, s.category, s.sort_order, 1
+FROM (
+              SELECT '一年级' AS grade, '字音（声母韵母）'       AS name, '字词' AS category,  1 AS sort_order
+    UNION ALL SELECT '一年级',        '字形（笔画笔顺）',             '字词',           2
+    UNION ALL SELECT '一年级',        '量词',                         '字词',           3
+    UNION ALL SELECT '一年级',        '词语搭配',                     '字词',           4
+    UNION ALL SELECT '一年级',        '句子仿写',                     '句子',           5
+    UNION ALL SELECT '一年级',        '看图写话',                     '写作',           6
+    UNION ALL SELECT '二年级',        '多音字',                       '字词',           1
+    UNION ALL SELECT '二年级',        '形近字',                       '字词',           2
+    UNION ALL SELECT '二年级',        '近义反义词',                   '字词',           3
+    UNION ALL SELECT '二年级',        '标点符号基础',                 '句子',           4
+    UNION ALL SELECT '二年级',        '把字句被字句',                 '句子',           5
+    UNION ALL SELECT '二年级',        '看图写话',                     '写作',           6
+    UNION ALL SELECT '三年级',        '成语积累',                     '字词',           1
+    UNION ALL SELECT '三年级',        '关联词',                       '句子',           2
+    UNION ALL SELECT '三年级',        '修改病句（成分残缺）',         '句子',           3
+    UNION ALL SELECT '三年级',        '修辞（比喻拟人）',             '句子',           4
+    UNION ALL SELECT '三年级',        '概括段意',                     '阅读',           5
+    UNION ALL SELECT '三年级',        '记叙文阅读',                   '阅读',           6
+    UNION ALL SELECT '三年级',        '习作（写人记事）',             '写作',           7
+    UNION ALL SELECT '四年级',        '修辞（排比夸张）',             '句子',           1
+    UNION ALL SELECT '四年级',        '修改病句（搭配不当）',         '句子',           2
+    UNION ALL SELECT '四年级',        '句式变换',                     '句子',           3
+    UNION ALL SELECT '四年级',        '说明方法（举例子列数字）',     '阅读',           4
+    UNION ALL SELECT '四年级',        '概括主要内容',                 '阅读',           5
+    UNION ALL SELECT '四年级',        '体会思想感情',                 '阅读',           6
+    UNION ALL SELECT '四年级',        '习作（写景状物）',             '写作',           7
+    UNION ALL SELECT '五年级',        '修改病句（语序不当）',         '句子',           1
+    UNION ALL SELECT '五年级',        '说明方法（打比方作比较）',     '阅读',           2
+    UNION ALL SELECT '五年级',        '人物形象分析',                 '阅读',           3
+    UNION ALL SELECT '五年级',        '环境描写作用',                 '阅读',           4
+    UNION ALL SELECT '五年级',        '古诗鉴赏',                     '古诗文',         5
+    UNION ALL SELECT '五年级',        '文言实词',                     '古诗文',         6
+    UNION ALL SELECT '五年级',        '习作（审题立意）',             '写作',           7
+    UNION ALL SELECT '六年级',        '记叙顺序',                     '阅读',           1
+    UNION ALL SELECT '六年级',        '标题作用',                     '阅读',           2
+    UNION ALL SELECT '六年级',        '过渡照应',                     '阅读',           3
+    UNION ALL SELECT '六年级',        '文言翻译',                     '古诗文',         4
+    UNION ALL SELECT '六年级',        '古诗词默写',                   '古诗文',         5
+    UNION ALL SELECT '六年级',        '名著阅读',                     '基础',           6
+    UNION ALL SELECT '六年级',        '综合性学习',                   '基础',           7
+    UNION ALL SELECT '六年级',        '习作（谋篇布局）',             '写作',           8
+) s
+WHERE NOT EXISTS (
+    SELECT 1 FROM knowledge_point k
+    WHERE k.grade = s.grade AND k.name = s.name
+);
+
+-- ============================================================
+-- 结构迁移（幂等）：给已存在的旧库补列，可重复执行
+-- ============================================================
+
+-- lesson.prep_remark：备课备注从 lesson.remark 拆出（原先备课与排课共用 remark 一列）
+SET @col_exists := (
+    SELECT COUNT(*) FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'lesson' AND COLUMN_NAME = 'prep_remark'
+);
+SET @ddl := IF(@col_exists = 0,
+    'ALTER TABLE lesson ADD COLUMN prep_remark VARCHAR(500) DEFAULT NULL COMMENT ''备课备注（与排课备注分开）'' AFTER remark',
+    'SELECT 1');
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;

@@ -4,7 +4,7 @@
 <mapper namespace="com.lesson.schedule.mapper.LessonMapper">
 
     <sql id="Base_Column_List">
-        id, student_id, course_id, slot_id, lesson_date, status, absent_by, absent_reason, make_up_date, closed, remark, create_time, update_time
+        id, student_id, course_id, slot_id, lesson_date, status, absent_by, absent_reason, make_up_date, closed, remark, prep_remark, create_time, update_time
     </sql>
 
     <!-- 同 (lesson_date, slot_id) 冲突查询（每格 1 人） -->
@@ -106,7 +106,7 @@
         WHERE l.student_id = #{studentId}
           AND YEAR(l.lesson_date) = #{year}
           AND MONTH(l.lesson_date) = #{month}
-        ORDER BY l.lesson_date, ts.sort_order, l.slot_id
+        ORDER BY l.lesson_date, ts.start_time, l.slot_id
     </select>
 
     <!-- 指定年/月全部课次（统计聚合用，Wave E / S08） -->
@@ -156,7 +156,7 @@
         LEFT JOIN course c ON l.course_id = c.id
         LEFT JOIN time_slot ts ON l.slot_id = ts.id
         WHERE l.lesson_date = #{date}
-        ORDER BY ts.sort_order, l.slot_id
+        ORDER BY ts.start_time, l.slot_id
     </select>
 
     <!-- 今日该补的待补课：make_up_date = 指定日期 且 status=ABSENT AND closed=0（BE-API-33 出参 pendingToday） -->

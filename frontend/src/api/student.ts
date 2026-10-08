@@ -3,7 +3,8 @@
 // TODO(W5-03): 后端 Wave A 就绪后将 USE_MOCK 改为 false。
 import request from '@/utils/request'
 import type { Student, StudentStatus, PageResult } from '@/types'
-import { mockStudents, autoColor } from './mockData'
+import { mockStudents } from './mockData'
+import { autoColor } from '@/utils/color'
 
 const USE_MOCK = false
 

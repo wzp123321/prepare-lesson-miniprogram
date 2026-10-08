@@ -33,7 +33,7 @@ export function createDict(data: Partial<Dict>): Promise<Dict> {
     dictType,
     dictValue: data.dictValue || '',
     sortOrder: data.sortOrder ?? storeOf(dictType).length + 1,
-    enabled: data.enabled ?? true
+    enabled: data.enabled ?? 1
   }
   storeOf(dictType).push(d)
   return Promise.resolve(clone(d))

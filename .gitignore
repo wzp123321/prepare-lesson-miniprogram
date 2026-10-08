@@ -1,1 +1,9 @@
 prototype/
+
+node_modules/
+dist
+dist-*/
+vite.config.ts.*
+target/
+target/*.yml
+/backend/target/

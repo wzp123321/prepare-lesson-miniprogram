@@ -1,5 +1,10 @@
 package com.lesson.schedule.service;
 
+import com.lesson.schedule.common.PageResult;
+import com.lesson.schedule.common.dto.BatchLessonDTO;
+import com.lesson.schedule.common.dto.LessonQueryDTO;
+import com.lesson.schedule.common.vo.BatchLessonResultVO;
+import com.lesson.schedule.common.vo.LessonRecordVO;
 import com.lesson.schedule.common.vo.MonthGridVO;
 import com.lesson.schedule.common.vo.TodayVO;
 import com.lesson.schedule.entity.Lesson;
@@ -30,6 +35,27 @@ public interface LessonService {
      * @return 新建 lesson 主键
      */
     Long createLesson(Long studentId, Long slotId, LocalDate lessonDate);
+
+    /**
+     * BE-API-16B 批量/循环排课：按「学生 + 时段 + 星期几 + 日期区间」批量建课。
+     * <p>逐日遍历区间，命中星期且该格空闲则建课（status=UNTAKEN, closed=0）；
+     * 该格已占用或非当前月的日期直接跳过并计入 skipped / skippedDates，不中断整体流程。</p>
+     *
+     * @param dto 批量排课入参
+     * @return 新建数与跳过明细
+     */
+    BatchLessonResultVO batchCreateLessons(BatchLessonDTO dto);
+
+    /**
+     * 复制某周课表到另一周（供智能体「照上周排一遍」使用）。
+     * <p>取源周（sourceFrom 起 7 天）中 status ∈ {UNTAKEN, NORMAL} 的课次，
+     * 按「同星期几 + 同时段 + 同学生」平移到目标周；非当前月或目标格已占用则跳过（不中断）。</p>
+     *
+     * @param sourceFrom 源周起始日
+     * @param targetFrom 目标周起始日
+     * @return 新建数与跳过明细（复用批量排课结果结构）
+     */
+    BatchLessonResultVO copyWeek(LocalDate sourceFrom, LocalDate targetFrom);
 
     /**
      * BE-API-17 删课（拖出/点删，Wave G1）。历史月课次返回 409（C-07 历史月只读护栏）。
@@ -131,4 +157,13 @@ public interface LessonService {
      * @return 今日视图
      */
     TodayVO getToday();
+
+    /**
+     * 排课记录查询（分页）：按学生 / 年级 / 时间范围 / 状态过滤。
+     * <p>年级不在 lesson 表上，服务层先按 grade 取学生 id 再过滤；若年级筛选命中 0 人则直接返回空分页（不查库）。</p>
+     *
+     * @param query 查询条件（page 从 1 起，size 默认 20）
+     * @return 分页结果（list / total / page / size）
+     */
+    PageResult<LessonRecordVO> queryRecords(LessonQueryDTO query);
 }

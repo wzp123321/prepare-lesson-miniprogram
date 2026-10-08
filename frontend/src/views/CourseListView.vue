@@ -1,11 +1,14 @@
 <script setup lang="ts">
 // S03 课程管理 —— 按学生分组展示语文课配置（价格/备注/启用），建课/改备注/停用
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { fetchStudents } from '@/api/student'
-import { fetchStudentCourse, createCourse, updateCourse, disableCourse } from '@/api/course'
+import { fetchStudentCourse, createCourse, updateCourse, disableCourse, enableCourse } from '@/api/course'
 import type { Student, Course } from '@/types'
-import { isConflict, errMsg } from '@/api/mockData'
+import { isConflict, errMsg } from '@/utils/error'
+
+const router = useRouter()
 
 interface CourseRow {
   student: Student
@@ -14,6 +17,14 @@ interface CourseRow {
 
 const loading = ref(false)
 const rows = ref<CourseRow[]>([])
+
+/** 已建课人数（未建课的行只能「建课」） */
+const builtCount = computed(() => rows.value.filter((r) => r.course).length)
+
+/** 跳「排课记录」看逐节课（本页只维护课程配置） */
+function goRecords(): void {
+  router.push('/dashboard/records')
+}
 
 const remarkDialog = ref(false)
 const remarkTarget = ref<CourseRow | null>(null)
@@ -97,7 +108,7 @@ async function onToggleEnabled(row: CourseRow, val: boolean | string | number): 
   if (!row.course) return
   try {
     if (val) {
-      await updateCourse(row.course.id, { remark: row.course.remark })
+      await enableCourse(row.course.id)
       ElMessage.success('已启用')
     } else {
       await onDisable(row)
@@ -115,21 +126,36 @@ onMounted(loadList)
 
 <template>
   <el-card>
-    <template #header>
-      <div class="card-header">
-        <span>课程管理</span>
-        <span class="hint">每生一门语文课，价格自动取自学生单价</span>
+    <div class="toolbar">
+      <div class="hint">
+        每生一门语文课，价格自动取自学生单价；本页是课程配置，逐节课请看
+        <el-button link type="primary" class="link" @click="goRecords">排课记录</el-button>
       </div>
-    </template>
+      <span class="count">共 {{ rows.length }} 名学生 · 已建课 {{ builtCount }} 人</span>
+    </div>
 
-    <el-table v-loading="loading" :data="rows" border stripe empty-text="暂无学生">
-      <el-table-column prop="student.name" label="学生" min-width="100" />
-      <el-table-column prop="student.grade" label="年级" min-width="90" />
-      <el-table-column label="科目" min-width="90" align="center">
-        <template #default>语文</template>
+    <el-table v-loading="loading" :data="rows" empty-text="暂无学生">
+      <el-table-column label="学生" min-width="110">
+        <template #default="{ row }">
+          <span class="sname">{{ row.student.name }}</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="年级" min-width="90">
+        <template #default="{ row }">
+          <span v-if="row.student.grade">{{ row.student.grade }}</span>
+          <span v-else class="muted">未填</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="科目" min-width="100" align="center">
+        <template #default="{ row }">
+          <span v-if="row.course">语文</span>
+          <el-tag v-else size="small" type="info" effect="plain">未建课</el-tag>
+        </template>
       </el-table-column>
       <el-table-column label="价格" min-width="100" align="right">
-        <template #default="{ row }">¥{{ row.course ? row.course.price : row.student.price }}</template>
+        <template #default="{ row }">
+          <span class="price">¥{{ row.course ? row.course.price : row.student.price }}</span>
+        </template>
       </el-table-column>
       <el-table-column label="备注" min-width="160" show-overflow-tooltip>
         <template #default="{ row }">{{ row.course ? row.course.remark || '—' : '—' }}</template>
@@ -139,6 +165,8 @@ onMounted(loadList)
           <el-switch
             v-if="row.course"
             :model-value="row.course.enabled"
+            :active-value="1"
+            :inactive-value="0"
             @change="(val: boolean | string | number) => onToggleEnabled(row, val)"
           />
           <span v-else>—</span>
@@ -168,13 +196,35 @@ onMounted(loadList)
 </template>
 
 <style scoped>
-.card-header {
+.toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
 }
 .hint {
-  font-size: 12px;
-  color: #909399;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.hint .link {
+  vertical-align: baseline;
+  padding: 0 2px;
+}
+.count {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.sname {
+  font-weight: 500;
+}
+.muted {
+  color: var(--text-muted);
+}
+.price {
+  font-weight: 600;
+  color: var(--text-strong);
+  font-variant-numeric: tabular-nums;
 }
 </style>

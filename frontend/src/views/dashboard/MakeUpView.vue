@@ -9,7 +9,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import type { LessonCell, AbsentBy } from '@/types'
 import { fetchPendingMakeUp, closeMakeUp, arrangeMakeUp } from '@/api/makeUp'
 import { ABSENT_BY_LABEL } from '@/constants/status'
-import { errMsg } from '@/api/mockData'
+import { errMsg } from '@/utils/error'
 
 const loading = ref(false)
 const errorMsg = ref('')
@@ -79,7 +79,7 @@ onMounted(load)
 </script>
 
 <template>
-  <el-card shadow="never" header="待补课">
+  <el-card shadow="never">
     <!-- loading -->
     <el-skeleton v-if="loading" :rows="6" animated />
     <!-- error -->
@@ -91,7 +91,7 @@ onMounted(load)
     <!-- 无数据 -->
     <el-empty v-else-if="!hasData" description="当前无待补课" :image-size="80" />
     <!-- 列表 -->
-    <el-table v-else :data="pending" border size="small">
+    <el-table v-else :data="pending" size="small">
       <el-table-column prop="studentName" label="学生" width="120" />
       <el-table-column prop="lessonDate" label="原顺延日期" width="140" />
       <el-table-column label="时段" width="130">
@@ -138,8 +138,4 @@ onMounted(load)
   </el-dialog>
 </template>
 
-<style scoped>
-.el-card {
-  border-radius: 8px;
-}
-</style>
+<style scoped></style>

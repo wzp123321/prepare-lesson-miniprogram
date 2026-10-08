@@ -1,0 +1,145 @@
+/* ============================================================
+   Element Plus 主题覆盖
+   ⚠️ 必须在 element-plus/dist/index.css 之后导入（main.ts 已保证顺序）
+   策略：优先改 CSS 变量（EP 2.x 官方支持），必要时才写组件选择器
+   ============================================================ */
+
+:root {
+  /* ---------- 主色：默认蓝 → 靛蓝 ---------- */
+  --el-color-primary: var(--brand-500);
+  --el-color-primary-light-3: var(--brand-400);
+  --el-color-primary-light-5: var(--brand-300);
+  --el-color-primary-light-7: var(--brand-200);
+  --el-color-primary-light-8: var(--brand-100);
+  --el-color-primary-light-9: var(--brand-50);
+  --el-color-primary-dark-2: var(--brand-600);
+
+  /* ---------- 语义色 ---------- */
+  --el-color-success: var(--success);
+  --el-color-warning: var(--warning);
+  --el-color-danger: var(--danger);
+  --el-color-error: var(--danger);
+  --el-color-info: var(--info);
+
+  /* ---------- 圆角 ---------- */
+  --el-border-radius-base: var(--radius-sm);
+  --el-border-radius-small: var(--radius-xs);
+  --el-border-radius-round: var(--radius-pill);
+
+  /* ---------- 文本层级 ---------- */
+  --el-text-color-primary: var(--text-strong);
+  --el-text-color-regular: var(--text-body);
+  --el-text-color-secondary: var(--text-muted);
+  --el-text-color-placeholder: var(--text-faint);
+
+  /* ---------- 边框与填充 ---------- */
+  --el-border-color: var(--border-base);
+  --el-border-color-light: var(--border-subtle);
+  --el-border-color-lighter: #f3f5f7;
+  --el-border-color-extra-light: #f7f8fa;
+  --el-fill-color-blank: var(--surface);
+  --el-fill-color-light: var(--surface-sunken);
+  --el-bg-color-page: var(--page-bg);
+
+  /* ---------- 阴影 ---------- */
+  --el-box-shadow-light: var(--shadow-card);
+  --el-box-shadow: var(--shadow-pop);
+  --el-box-shadow-lighter: var(--shadow-card);
+}
+
+/* ===================== 卡片 ===================== */
+.el-card {
+  border: none;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+}
+.el-card__header {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border-subtle);
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text-strong);
+}
+.el-card__body {
+  padding: 18px;
+}
+
+/* ===================== 表格：去竖线、表头弱化 ===================== */
+.el-table {
+  --el-table-border-color: var(--border-subtle);
+  --el-table-header-bg-color: var(--surface-sunken);
+  --el-table-row-hover-bg-color: var(--brand-50);
+}
+.el-table th.el-table__cell {
+  background-color: var(--surface-sunken);
+  color: var(--text-muted);
+  font-weight: 500;
+  font-size: 13px;
+}
+.el-table td.el-table__cell {
+  padding: 11px 0;
+}
+/* 竖线与外框一律去掉，只留行分隔 */
+.el-table--border .el-table__cell.is-right,
+.el-table--border .el-table__cell {
+  border-right: none;
+}
+.el-table--border::after,
+.el-table__inner-wrapper::before {
+  display: none;
+}
+
+/* ===================== 按钮 ===================== */
+.el-button {
+  font-weight: 500;
+}
+.el-button--primary:not(.is-link):not(.is-text):not(.is-plain) {
+  box-shadow: 0 1px 2px rgba(99, 102, 241, 0.22);
+}
+.el-button.is-plain {
+  background: var(--surface);
+}
+
+/* ===================== 输入 / 选择 ===================== */
+.el-input__wrapper,
+.el-textarea__inner,
+.el-select__wrapper {
+  border-radius: var(--radius-sm);
+}
+
+/* ===================== 弹窗 / 抽屉 ===================== */
+.el-dialog {
+  border-radius: var(--radius-md);
+  padding: 20px;
+}
+.el-dialog__header {
+  margin-right: 0;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.el-dialog__title {
+  font-weight: 600;
+  font-size: 15px;
+}
+.el-drawer__header {
+  margin-bottom: 14px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-strong);
+  font-weight: 600;
+}
+
+/* ===================== 标签 / 分页 ===================== */
+.el-tag {
+  border-radius: var(--radius-xs);
+  font-weight: 500;
+}
+.el-pagination.is-background .el-pager li {
+  border-radius: var(--radius-xs);
+}
+
+/* ===================== 下拉菜单 ===================== */
+.el-dropdown-menu,
+.el-popper.is-light {
+  border-radius: var(--radius-sm);
+}

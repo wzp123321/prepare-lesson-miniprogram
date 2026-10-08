@@ -34,7 +34,7 @@ export function createCourse(studentId: number, data: { remark?: string }): Prom
     subject: '语文',
     price,
     remark: data.remark || '',
-    enabled: true
+    enabled: 1
   }
   mockCourses.push(course)
   return Promise.resolve(clone(course))
@@ -54,6 +54,15 @@ export function disableCourse(id: number): Promise<void> {
   if (!USE_MOCK) return request.post<void, void>('/courses/disable', { id })
   const c = mockCourses.find((x) => x.id === id)
   if (!c) return Promise.reject(new Error('课程不存在'))
-  c.enabled = false
+  c.enabled = 0
+  return Promise.resolve()
+}
+
+// 启用（enabled=1，与 disable 成对，不再借道 update-remark）
+export function enableCourse(id: number): Promise<void> {
+  if (!USE_MOCK) return request.post<void, void>('/courses/enable', { id })
+  const c = mockCourses.find((x) => x.id === id)
+  if (!c) return Promise.reject(new Error('课程不存在'))
+  c.enabled = 1
   return Promise.resolve()
 }

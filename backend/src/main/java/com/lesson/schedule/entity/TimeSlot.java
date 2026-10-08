@@ -26,7 +26,7 @@ public class TimeSlot {
     /** 排序（网格列序） */
     private Integer sortOrder;
 
-    /** 启用 1/0 */
+    /** 启用 1/0（前端 el-switch 1/0，与 types/index.ts 对齐） */
     private Integer enabled;
 
     private LocalDateTime createTime;

@@ -19,6 +19,45 @@ spring:
     active: ${SPRING_PROFILES_ACTIVE:dev}
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
+  # 智能排课：DeepSeek（经 Spring AI 的 OpenAI 兼容协议接入，非 OpenAI 官方服务）
+  #
+  # 为什么不用 spring-ai-starter-model-deepseek：它的 1.0.0 客户端没有 thinking 参数，
+  #   而 DeepSeek V4 默认「开启思考模式」。思考模式 + 工具调用时，DeepSeek 要求把
+  #   reasoning_content 原样回传（Spring AI 不解析该字段 → 工具调用第二轮会被拒 400）。
+  #   走 OpenAI 兼容协议后可以用 reasoning-effort: none 关掉思考模式，工具调用才稳定。
+  #
+  # API Key 两种填法，任选其一：
+  #   ① 直接写在下面 api-key 里：        api-key: sk-xxxxxxxx
+  #   ② 保留占位式写法（环境变量优先）： api-key: ${AI_DEEPSEEK_API_KEY:sk-xxxxxxxx}
+  #      Windows 永久设环境变量：setx AI_DEEPSEEK_API_KEY "sk-xxx"（设完要重开终端）
+  #   ⚠️ 未配置时给占位值：Spring AI 在 api-key 为空时会让「整个应用」启动失败，
+  #      占位值只为让应用能起来；真正是否可用由 AiScheduleServiceImpl 判断。
+  ai:
+    openai:
+      api-key: ${AI_DEEPSEEK_API_KEY:not-configured}
+      # DeepSeek 官方接口地址（OpenAI 兼容）；换网关改这里
+      base-url: https://api.deepseek.com
+      # 本工程只做对话，关掉用不到的多模态自动配置，避免额外的 Key 校验
+      embedding:
+        enabled: false
+      image:
+        enabled: false
+      audio:
+        transcription:
+          enabled: false
+        speech:
+          enabled: false
+      moderation:
+        enabled: false
+      chat:
+        # DeepSeek 的补全端点就是 /chat/completions（OpenAI starter 默认会带 /v1，这里改掉）
+        completions-path: /chat/completions
+        options:
+          # deepseek-flash = DeepSeek-V4.1-Flash（官方当前推荐名，支持工具调用）
+          # 想换更强的：setx AI_DEEPSEEK_MODEL "deepseek-v4-pro"
+          model: ${AI_DEEPSEEK_MODEL:deepseek-flash}
+          # none = 关闭思考模式：排课用不到长思维链，关掉更快更省，也避免工具调用 400
+          reasoning-effort: ${AI_DEEPSEEK_REASONING_EFFORT:none}
 
 mybatis-plus:
   # Mapper XML 位置（src/main/resources/mapper/*.xml）

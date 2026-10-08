@@ -12,10 +12,10 @@ let slotSeq = 2000
 // 已确认删除的 id（mock：首次被引用删除返回 409，确认后再删放行）
 const confirmedDeletes = new Set<number>()
 
-// BE-API-06 列表（按 sortOrder）
+// BE-API-06 列表（按开始时间升序）
 export function fetchTimeSlots(): Promise<TimeSlot[]> {
   if (!USE_MOCK) return request.post<TimeSlot[], TimeSlot[]>('/time-slots/list')
-  const list = [...mockTimeSlots].sort((a, b) => a.sortOrder - b.sortOrder)
+  const list = [...mockTimeSlots].sort((a, b) => a.startTime.localeCompare(b.startTime))
   return Promise.resolve(clone(list))
 }
 
@@ -28,7 +28,7 @@ export function createTimeSlot(data: Partial<TimeSlot>): Promise<TimeSlot> {
     startTime: data.startTime || '00:00:00',
     endTime: data.endTime || '00:00:00',
     sortOrder: data.sortOrder ?? mockTimeSlots.length + 1,
-    enabled: data.enabled ?? true,
+    enabled: data.enabled ?? 1,
     name: data.name
   }
   mockTimeSlots.push(ts)
@@ -63,15 +63,5 @@ export function deleteTimeSlot(id: number): Promise<void> {
   }
   mockTimeSlots.splice(idx, 1)
   confirmedDeletes.delete(id)
-  return Promise.resolve()
-}
-
-// BE-API-10 排序调整（body: [{id, sortOrder}]）
-export function sortTimeSlots(data: { id: number; sortOrder: number }[]): Promise<void> {
-  if (!USE_MOCK) return request.post<void, void>('/time-slots/sort', data)
-  data.forEach((d) => {
-    const t = mockTimeSlots.find((x) => x.id === d.id)
-    if (t) t.sortOrder = d.sortOrder
-  })
   return Promise.resolve()
 }

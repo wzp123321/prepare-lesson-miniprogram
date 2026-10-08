@@ -7,11 +7,11 @@
         id, start_time, end_time, sort_order, enabled, create_time, update_time
     </sql>
 
-    <!-- 按 sort_order 升序返回全部时段 -->
+    <!-- 按开始时间升序返回全部时段（顺序由起止时间决定，不提供手工排序） -->
     <select id="listOrdered" resultType="com.lesson.schedule.entity.TimeSlot">
         SELECT <include refid="Base_Column_List"/>
         FROM time_slot
-        ORDER BY sort_order ASC, id ASC
+        ORDER BY start_time ASC, id ASC
     </select>
 
     <!-- 重叠校验辅助：与 [startTime, endTime) 交叉且启用，可排除自身 -->

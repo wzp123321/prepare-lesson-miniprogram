@@ -18,4 +18,7 @@ public interface CourseService {
 
     /** BE-API-14 停用（enabled=0，保留历史）。 */
     void disable(Long id);
+
+    /** 启用（enabled=1）。与 disable 成对，避免前端用「改备注」接口代偿表达启用语义。 */
+    void enable(Long id);
 }

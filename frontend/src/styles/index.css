@@ -1,0 +1,56 @@
+/* ============================================================
+   全局样式入口（main.ts 只导入这一个文件）
+   顺序：令牌 → Element Plus 覆盖 → 全局基础
+   ============================================================ */
+@import './tokens.css';
+@import './element.css';
+
+/* ===================== 基础 ===================== */
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-strong);
+  background: var(--page-bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* 表格数字等宽，纵向对齐更整齐 */
+.el-table .cell,
+.el-table td,
+.el-table th {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ===================== 滚动条 ===================== */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #d5d9e0;
+  border-radius: var(--radius-pill);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #b6bcc7;
+}
+
+::selection {
+  background: var(--brand-100);
+}

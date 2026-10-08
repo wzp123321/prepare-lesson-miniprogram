@@ -2,7 +2,6 @@ package com.lesson.schedule.service.impl;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.lesson.schedule.common.BusinessException;
-import com.lesson.schedule.common.dto.TimeSlotSortDTO;
 import com.lesson.schedule.entity.TimeSlot;
 import com.lesson.schedule.mapper.LessonMapper;
 import com.lesson.schedule.mapper.TimeSlotMapper;
@@ -59,22 +58,6 @@ public class TimeSlotServiceImpl implements TimeSlotService {
             throw new BusinessException(409, "该时间段已被排课引用，引用数：" + refCount);
         }
         timeSlotMapper.deleteById(id);
-    }
-
-    @Override
-    public void updateSort(List<TimeSlotSortDTO> items) {
-        if (items == null) {
-            return;
-        }
-        for (TimeSlotSortDTO item : items) {
-            if (item.getId() == null) {
-                continue;
-            }
-            TimeSlot ts = new TimeSlot();
-            ts.setId(item.getId());
-            ts.setSortOrder(item.getSortOrder());
-            timeSlotMapper.updateById(ts);
-        }
     }
 
     /** 校验起止时间非空且 start < end。 */

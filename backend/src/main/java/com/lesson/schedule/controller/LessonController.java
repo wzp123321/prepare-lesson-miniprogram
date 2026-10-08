@@ -1,26 +1,38 @@
 package com.lesson.schedule.controller;
 
 import com.lesson.schedule.common.BusinessException;
+import com.lesson.schedule.common.PageResult;
 import com.lesson.schedule.common.Result;
 import com.lesson.schedule.common.dto.AbsentDTO;
+import com.lesson.schedule.common.dto.BatchLessonDTO;
+import com.lesson.schedule.common.dto.CopyWeekDTO;
 import com.lesson.schedule.common.dto.CreateLessonDTO;
 import com.lesson.schedule.common.dto.IdDTO;
+import com.lesson.schedule.common.dto.LessonQueryDTO;
 import com.lesson.schedule.common.dto.MakeUpCloseDTO;
 import com.lesson.schedule.common.dto.MakeUpDTO;
+import com.lesson.schedule.common.dto.MonthExportDTO;
 import com.lesson.schedule.common.dto.SaveMonthDTO;
 import com.lesson.schedule.common.dto.StatusChangeDTO;
 import com.lesson.schedule.common.dto.StudentScheduleExportDTO;
 import com.lesson.schedule.common.dto.UpdateLessonDTO;
 import com.lesson.schedule.common.vo.MonthGridVO;
+import com.lesson.schedule.common.vo.BatchLessonResultVO;
+import com.lesson.schedule.common.vo.LessonRecordVO;
 import com.lesson.schedule.common.vo.StudentMonthScheduleVO;
 import com.lesson.schedule.common.vo.TodayVO;
 import com.lesson.schedule.entity.Lesson;
+import com.lesson.schedule.service.LessonExportService;
 import com.lesson.schedule.service.LessonService;
 import com.lesson.schedule.service.StudentService;
+import java.io.IOException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.YearMonth;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -47,6 +59,7 @@ public class LessonController {
 
     private final LessonService lessonService;
     private final StudentService studentService;
+    private final LessonExportService lessonExportService;
 
     // ============================ S04 排课核心写接口 ============================
 
@@ -55,6 +68,34 @@ public class LessonController {
     public Result<Long> createLesson(@Valid @RequestBody CreateLessonDTO dto) {
         Long id = lessonService.createLesson(dto.getStudentId(), dto.getSlotId(), dto.getLessonDate());
         return Result.success(id);
+    }
+
+    /**
+     * BE-API-16B 批量/循环排课。body: {studentId, slotId, weekdays:[1..7], startDate, endDate}。
+     * 命中星期且该格空闲则建课；已占用或非当前月的日期跳过并计入 skipped，不中断整批。
+     */
+    @PostMapping("/lessons/batch")
+    public Result<BatchLessonResultVO> batchCreateLessons(@Valid @RequestBody BatchLessonDTO dto) {
+        return Result.success(lessonService.batchCreateLessons(dto));
+    }
+
+    /**
+     * BE-API-16C 复制某周课表到另一周。body: {sourceFrom, targetFrom}（均为该周周一）。
+     * 源周内 未上(UNTAKEN)/正常(NORMAL) 的课按同星期几平移到目标周；
+     * 非当前月或目标格已占用则跳过并计入 skipped，不中断整批。与批量排课共用同一套护栏。
+     */
+    @PostMapping("/lessons/copy-week")
+    public Result<BatchLessonResultVO> copyWeek(@Valid @RequestBody CopyWeekDTO dto) {
+        return Result.success(lessonService.copyWeek(dto.getSourceFrom(), dto.getTargetFrom()));
+    }
+
+    /**
+     * BE-API-34 排课记录查询（分页）。body: {studentId?, grade?, from?, to?, status?, page?, size?}。
+     * 供「排课记录」页按学生 / 年级 / 时间范围筛选课节；返回 {list, total, page, size}。
+     */
+    @PostMapping("/lessons/query")
+    public Result<PageResult<LessonRecordVO>> queryRecords(@RequestBody LessonQueryDTO dto) {
+        return Result.success(lessonService.queryRecords(dto));
     }
 
     /** BE-API-17 删课（拖出/点删）。历史月课次返回 409（C-07）。body: {id}。 */
@@ -81,6 +122,21 @@ public class LessonController {
         Map<String, Integer> data = new HashMap<>(2);
         data.put("closedCount", closedCount);
         return Result.success(data);
+    }
+
+    /**
+     * 导出当月排课表（xlsx 二进制流，**不走 Result 包装**）。body: {year, month}。
+     * <p>两张表：Sheet「排课总表」（日期 × 时段 矩阵）+ Sheet「排课明细」。</p>
+     */
+    @PostMapping("/lessons/export")
+    public void exportMonthExcel(@Valid @RequestBody MonthExportDTO dto, HttpServletResponse response)
+            throws IOException {
+        String name = "排课表_" + dto.getYear() + "-" + String.format("%02d", dto.getMonth());
+        String encoded = URLEncoder.encode(name, StandardCharsets.UTF_8).replace("+", "%20");
+        response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        response.setCharacterEncoding("UTF-8");
+        response.setHeader("Content-Disposition", "attachment;filename*=UTF-8''" + encoded + ".xlsx");
+        lessonExportService.exportMonthExcel(dto.getYear(), dto.getMonth(), response.getOutputStream());
     }
 
     /**
@@ -140,13 +196,6 @@ public class LessonController {
         return Result.success();
     }
 
-    /** D-04 标记已补（补课完成）。status→MADEUP 且 closed=1（计入已补 Z）。body: {id}。 */
-    @PostMapping("/lessons/made-up")
-    public Result<Void> markMadeUp(@RequestBody IdDTO dto) {
-        lessonService.markMadeUp(dto.getId());
-        return Result.success();
-    }
-
     /** BE-API-25 手动关闭待补（首页「已安排进本月课程」）。仅置 closed=1，status 保持 ABSENT（不计入已补 Z）。body: {lessonId}。 */
     @PostMapping("/make-up/close")
     public Result<Void> closePending(@RequestBody MakeUpCloseDTO dto) {
@@ -168,4 +217,3 @@ public class LessonController {
         return Result.success(lessonService.getToday());
     }
 }
-                                                         

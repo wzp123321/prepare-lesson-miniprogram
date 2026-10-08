@@ -8,11 +8,11 @@ import org.apache.ibatis.annotations.Param;
 
 /**
  * 时间段 Mapper（S02）。基础 CRUD 由 MyBatis-Plus 提供，
- * 补充「按 sortOrder 列表」与「重叠区间查询辅助」（A-13）。
+ * 补充「按开始时间列表」与「重叠区间查询辅助」（A-13）。
  */
 public interface TimeSlotMapper extends BaseMapper<TimeSlot> {
 
-    /** 按 sort_order 升序返回全部时段。 */
+    /** 按 start_time 升序返回全部时段（顺序由起止时间决定，不做手工排序）。 */
     List<TimeSlot> listOrdered();
 
     /**

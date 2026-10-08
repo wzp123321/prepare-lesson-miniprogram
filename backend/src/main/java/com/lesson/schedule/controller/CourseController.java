@@ -48,4 +48,11 @@ public class CourseController {
         courseService.disable(dto.getId());
         return Result.success();
     }
+
+    /** 启用（enabled=1）。入参：id。 */
+    @PostMapping("/enable")
+    public Result<Void> enable(@RequestBody IdDTO dto) {
+        courseService.enable(dto.getId());
+        return Result.success();
+    }
 }

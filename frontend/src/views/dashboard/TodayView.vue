@@ -8,7 +8,7 @@ import type { LessonCell, LessonStatus, AbsentBy } from '@/types'
 import { fetchToday, markAbsent, changeLessonStatus } from '@/api/lesson'
 import { closeMakeUp } from '@/api/makeUp'
 import { STATUS_META, ABSENT_BY_LABEL } from '@/constants/status'
-import { errMsg } from '@/api/mockData'
+import { errMsg } from '@/utils/error'
 
 const todayStr = (() => {
   const d = new Date()
@@ -53,18 +53,18 @@ async function submitMark(): Promise<void> {
         ElMessage.warning('顺延时必须填写原因')
         return
       }
-      const res = await markAbsent(row.id, {
+      await markAbsent(row.id, {
         absentBy: dialogForm.absentBy,
         absentReason: dialogForm.reason.trim()
       })
-      row.status = res.status
-      row.absentBy = res.absentBy
-      row.absentReason = res.absentReason
+      row.status = 'ABSENT'
+      row.absentBy = dialogForm.absentBy
+      row.absentReason = dialogForm.reason.trim()
     } else {
-      const res = await changeLessonStatus(row.id, { status: 'NORMAL' })
-      row.status = res.status
-      row.absentBy = res.absentBy
-      row.absentReason = res.absentReason
+      await changeLessonStatus(row.id, { status: 'NORMAL' })
+      row.status = 'NORMAL'
+      row.absentBy = null
+      row.absentReason = null
     }
     dialogVisible.value = false
     ElMessage.success('标记已保存')
@@ -112,13 +112,7 @@ onMounted(loadAll)
 
 <template>
   <div>
-    <el-alert
-      :title="`今日 · ${todayStr}`"
-      type="primary"
-      :closable="false"
-      show-icon
-      style="margin-bottom: 12px"
-    />
+    <div class="page-head">今日 · {{ todayStr }}</div>
 
     <!-- loading -->
     <el-card v-if="cardState === 'loading'" shadow="never">
@@ -141,7 +135,7 @@ onMounted(loadAll)
       <!-- 今日该补的待补课 -->
       <el-card shadow="never" style="margin-bottom: 12px" header="今日该补 · 待补课">
         <el-empty v-if="pendingToday.length === 0" description="今日无待补课，状态良好" :image-size="50" />
-        <el-table v-else :data="pendingToday" size="small" border>
+        <el-table v-else :data="pendingToday" size="small">
           <el-table-column prop="studentName" label="学生" width="120" />
           <el-table-column prop="lessonDate" label="原顺延日期" width="140" />
           <el-table-column label="请假方" width="110">
@@ -162,7 +156,7 @@ onMounted(loadAll)
       <!-- 今天课程列表 -->
       <el-card shadow="never" header="今天课程">
         <el-empty v-if="cardState === 'empty'" description="今天暂无排课" />
-        <el-table v-else :data="todayLessons" border size="small">
+        <el-table v-else :data="todayLessons" size="small">
           <el-table-column label="时段" width="140">
             <template #default="{ row }: { row: LessonCell }">
               <el-tag size="small" effect="plain">{{ row.slotLabel }}</el-tag>
@@ -174,10 +168,7 @@ onMounted(loadAll)
               <el-tag :type="STATUS_META[row.status].tagType" size="small">
                 {{ STATUS_META[row.status].label }}
               </el-tag>
-              <div
-                v-if="row.status === 'ABSENT'"
-                style="font-size: 11px; color: #f56c6c; margin-top: 2px"
-              >
+              <div v-if="row.status === 'ABSENT'" class="absent-note">
                 {{ row.absentBy ? ABSENT_BY_LABEL[row.absentBy as AbsentBy] : '' }}：{{ row.absentReason }}
               </div>
             </template>
@@ -226,7 +217,14 @@ onMounted(loadAll)
 </template>
 
 <style scoped>
-.el-card {
-  border-radius: 8px;
+.page-head {
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.absent-note {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--danger);
 }
 </style>

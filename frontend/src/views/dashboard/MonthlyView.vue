@@ -8,8 +8,8 @@ import type { LessonCell, LessonStatus, AbsentBy, MonthGrid, Student } from '@/t
 import { getMonth, markAbsent, changeLessonStatus, cellKey, slotLabel } from '@/api/lesson'
 import { arrangeMakeUp } from '@/api/makeUp'
 import { fetchStudents } from '@/api/student'
-import { STATUS_META } from '@/constants/status'
-import { errMsg } from '@/api/mockData'
+import { STATUS_META, allowedNextStatuses, STATUS_ACTION_LABEL } from '@/constants/status'
+import { errMsg } from '@/utils/error'
 
 type ViewState = 'loading' | 'empty' | 'error' | 'populated' | 'edge'
 
@@ -58,7 +58,7 @@ function studentColor(id?: number): string {
 }
 function cellStyle(date: string, slotId: number): Record<string, string> {
   const base: Record<string, string> = {
-    border: '1px solid #ebeef5',
+    border: '1px solid var(--border-subtle)',
     minHeight: '46px',
     padding: '4px 6px',
     position: 'relative',
@@ -81,12 +81,19 @@ const statusForm = reactive({
   makeUpDate: ''
 })
 
+// 合法目标状态取自全局收敛点 constants/status.ts（与后端状态机对齐，避免重复定义）
+const statusOptions = computed<{ value: LessonStatus; label: string }[]>(() =>
+  allowedNextStatuses(statusForm.cell?.status).map((v) => ({ value: v, label: STATUS_ACTION_LABEL[v] }))
+)
+
 function openStatusDialog(cell: LessonCell): void {
   statusForm.cell = cell
-  statusForm.mark = cell.status === 'UNTAKEN' ? 'NORMAL' : cell.status
   statusForm.absentBy = cell.absentBy ?? 'student'
   statusForm.reason = cell.absentReason ?? ''
   statusForm.makeUpDate = ''
+  // 默认选中第一个合法目标状态（终态课次保持原状态，不提供变更）
+  const opts = statusOptions.value
+  statusForm.mark = opts.length ? opts[0].value : cell.status
   statusDialog.value = true
 }
 
@@ -100,25 +107,34 @@ function onCellClick(date: string, slotId: number): void {
   openStatusDialog(cell)
 }
 
-function applyUpdate(cell: LessonCell, res: { status: LessonStatus; absentBy: AbsentBy | null; absentReason: string | null }): void {
+/** 后端 /lessons/absent、/lessons/status 均返回 Result<Void>，用本地入参补状态 */
+function applyUpdate(
+  cell: LessonCell,
+  patch: { status: LessonStatus; absentBy: AbsentBy | null; absentReason: string | null }
+): void {
   const key = cellKey(cell.lessonDate, cell.slotId)
-  lessons[key] = { ...lessons[key], status: res.status, absentBy: res.absentBy, absentReason: res.absentReason }
+  lessons[key] = { ...lessons[key], ...patch }
 }
 
 async function submitStatus(): Promise<void> {
   const cell = statusForm.cell
   if (!cell) return
+  if (!statusOptions.value.length) return
   try {
     if (statusForm.mark === 'ABSENT') {
       if (!statusForm.reason.trim()) {
         ElMessage.warning('顺延时必须填写原因')
         return
       }
-      const res = await markAbsent(cell.id, {
+      await markAbsent(cell.id, {
         absentBy: statusForm.absentBy,
         absentReason: statusForm.reason.trim()
       })
-      applyUpdate(cell, res)
+      applyUpdate(cell, {
+        status: 'ABSENT',
+        absentBy: statusForm.absentBy,
+        absentReason: statusForm.reason.trim()
+      })
     } else if (statusForm.mark === 'MADEUP') {
       // 已补走 BE-API-24（写补课日期 + 置 MADEUP + 关单），changeLessonStatus 状态机不允许 ABSENT→MADEUP
       if (!statusForm.makeUpDate) {
@@ -129,8 +145,8 @@ async function submitStatus(): Promise<void> {
       const key = cellKey(cell.lessonDate, cell.slotId)
       lessons[key] = { ...lessons[key], status: 'MADEUP', makeUpDate: statusForm.makeUpDate }
     } else {
-      const res = await changeLessonStatus(cell.id, { status: statusForm.mark })
-      applyUpdate(cell, res)
+      await changeLessonStatus(cell.id, { status: statusForm.mark })
+      applyUpdate(cell, { status: statusForm.mark, absentBy: null, absentReason: null })
     }
     statusDialog.value = false
     ElMessage.success('状态已更新')
@@ -231,7 +247,7 @@ onMounted(loadAll)
         <el-tag v-else type="success" effect="plain">当月 · 可管理状态</el-tag>
       </div>
 
-      <el-card shadow="never" :header="`当月课程表 · ${monthPicker}`">
+      <el-card shadow="never">
         <div style="overflow: auto">
           <table class="grid" :style="{ width: '100%', borderCollapse: 'collapse' }">
             <thead>
@@ -244,7 +260,7 @@ onMounted(loadAll)
               <tr v-for="day in grid.days" :key="day">
                 <td class="rowhead">
                   <div>{{ day.slice(5) }}</div>
-                  <div style="font-size: 11px; color: #909399">{{ weekdayCN(day) }}</div>
+                  <div class="rowhead-week">{{ weekdayCN(day) }}</div>
                 </td>
                 <td
                   v-for="sl in slots"
@@ -280,8 +296,8 @@ onMounted(loadAll)
             </tbody>
           </table>
         </div>
-        <div style="margin-top: 8px; font-size: 12px; color: #909399">
-          说明：点击单元格可切换 正常 / 顺延（填原因）/ 已补 / 作废；历史月份只读。
+        <div class="grid-tip">
+          点击单元格可切换 正常 / 顺延（填原因）/ 已补 / 作废；历史月份只读。
         </div>
       </el-card>
     </template>
@@ -300,14 +316,20 @@ onMounted(loadAll)
           </el-descriptions-item>
         </el-descriptions>
         <el-form label-width="80px">
-          <el-form-item label="新状态">
+          <el-form-item v-if="statusOptions.length" label="新状态">
             <el-radio-group v-model="statusForm.mark">
-              <el-radio value="NORMAL">正常上课</el-radio>
-              <el-radio value="ABSENT">顺延</el-radio>
-              <el-radio value="MADEUP">已补</el-radio>
-              <el-radio value="CANCELLED">作废</el-radio>
+              <el-radio v-for="opt in statusOptions" :key="opt.value" :value="opt.value">
+                {{ opt.label }}
+              </el-radio>
             </el-radio-group>
           </el-form-item>
+          <el-alert
+            v-else
+            type="info"
+            :closable="false"
+            show-icon
+            title="该课次已是终态（正常上课 / 已补 / 作废），状态不可再变更"
+          />
           <template v-if="statusForm.mark === 'ABSENT'">
             <el-form-item label="请假方">
               <el-select v-model="statusForm.absentBy" style="width: 100%">
@@ -337,8 +359,8 @@ onMounted(loadAll)
         </el-form>
       </template>
       <template #footer>
-        <el-button @click="statusDialog = false">取消</el-button>
-        <el-button type="primary" @click="submitStatus">保存</el-button>
+        <el-button @click="statusDialog = false">{{ statusOptions.length ? '取消' : '关闭' }}</el-button>
+        <el-button v-if="statusOptions.length" type="primary" @click="submitStatus">保存</el-button>
       </template>
     </el-dialog>
   </div>
@@ -352,20 +374,30 @@ onMounted(loadAll)
   user-select: none;
 }
 .grid .corner {
-  background: #f5f7fa;
   width: 90px;
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+  font-weight: 500;
 }
 .grid .head {
-  background: #f5f7fa;
-  padding: 6px 4px;
+  padding: 8px 4px;
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+  font-weight: 500;
   white-space: nowrap;
 }
 .grid .rowhead {
-  background: #fafafa;
   width: 90px;
   padding: 4px;
+  background: var(--surface-sunken);
 }
-.el-card {
-  border-radius: 8px;
+.rowhead-week {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+.grid-tip {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--text-muted);
 }
 </style>

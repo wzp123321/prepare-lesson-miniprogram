@@ -7,6 +7,11 @@
 #   --DB_USER=root --DB_PASSWORD=你的密码
 # ============================================================
 spring:
+  # 智能排课 DeepSeek：默认取 application.yml 的 spring.ai.openai.api-key。
+  # 若本环境要用另一个 Key，取消下面注释并填写（覆盖公共配置）：
+  # ai:
+  #   openai:
+  #     api-key: sk-本环境专用key
   datasource:
     # 默认连本机；如需连远端库，覆盖 DB_HOST=47.116.35.76
     # characterEncoding 取 Java 字符集名 UTF-8（不是 MySQL 的 utf8mb4），utf8mb4 驱动不识别
@@ -16,9 +21,11 @@ spring:
 
 mybatis-plus:
   configuration:
-    # 调试用：在控制台打印 SQL
-    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+    # 不打印 SQL：StdOutImpl 会把每条语句 + 参数 + 结果集全量刷到控制台，日志完全没法看。
+    # 需要临时排查单条 SQL 时，启动时加 --mybatis-plus.configuration.log-impl=org.apache.ibatis.logging.stdout.StdOutImpl
+    log-impl: org.apache.ibatis.logging.nologging.NoLoggingImpl
 
 logging:
   level:
-    com.lesson.schedule: debug
+    # info 级：只保留业务日志与异常堆栈，不输出 MyBatis 的 debug 流水
+    com.lesson.schedule: info

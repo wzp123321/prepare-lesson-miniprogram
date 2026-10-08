@@ -60,10 +60,41 @@ const routes: RouteRecordRaw[] = [
         meta: { group: 'dashboard', title: '当月课程表' }
       },
       {
+        path: 'dashboard/records',
+        name: 'DashboardRecords',
+        component: () => import('@/views/dashboard/LessonRecordsView.vue'),
+        meta: { group: 'dashboard', title: '排课记录' }
+      },
+      {
         path: 'dashboard/make-up',
         name: 'DashboardMakeUp',
         component: () => import('@/views/dashboard/MakeUpView.vue'),
         meta: { group: 'dashboard', title: '待补课' }
+      },
+      // ===== 备课组（知识点 → 题库 → 试卷 → 备课）=====
+      {
+        path: 'prep/todo',
+        name: 'PrepTodo',
+        component: () => import('@/views/prep/PrepTodoView.vue'),
+        meta: { group: 'prep', title: '待备课' }
+      },
+      {
+        path: 'prep/papers',
+        name: 'PrepPapers',
+        component: () => import('@/views/prep/PaperListView.vue'),
+        meta: { group: 'prep', title: '试卷' }
+      },
+      {
+        path: 'prep/questions',
+        name: 'PrepQuestions',
+        component: () => import('@/views/prep/QuestionBankView.vue'),
+        meta: { group: 'prep', title: '题库' }
+      },
+      {
+        path: 'prep/kps',
+        name: 'PrepKnowledge',
+        component: () => import('@/views/prep/KnowledgePointView.vue'),
+        meta: { group: 'prep', title: '知识点' }
       }
     ]
   },

@@ -11,7 +11,8 @@ import {
 } from '@/api/student'
 import { fetchDicts } from '@/api/dict'
 import type { Student, StudentStatus, Dict } from '@/types'
-import { isConflict, errMsg, autoColor } from '@/api/mockData'
+import { isConflict, errMsg } from '@/utils/error'
+import { autoColor } from '@/utils/color'
 
 interface StudentForm {
   id: number | undefined
@@ -60,10 +61,6 @@ const statusOptions = [
   { label: '在读', value: 1 },
   { label: '暂停', value: 0 }
 ]
-
-function statusTagType(status: number): 'success' | 'info' {
-  return status === 1 ? 'success' : 'info'
-}
 
 async function loadGrades(): Promise<void> {
   try {
@@ -203,65 +200,78 @@ onMounted(() => {
 
 <template>
   <el-card>
-    <template #header>
-      <div class="card-header">
-        <span>学生管理</span>
-        <el-button type="primary" @click="openAdd">新增学生</el-button>
-      </div>
-    </template>
+    <!-- 工具条：左搜索、右主操作（不再单占一行标题） -->
+    <div class="toolbar">
+      <el-form :inline="true" class="search-bar">
+        <el-form-item label="姓名/电话">
+          <el-input
+            v-model="query.keyword"
+            placeholder="姓名或电话"
+            clearable
+            @keyup.enter="onSearch"
+          />
+        </el-form-item>
+        <el-form-item label="年级">
+          <el-select v-model="query.grade" placeholder="全部" clearable style="width: 140px">
+            <el-option
+              v-for="g in gradeOptions"
+              :key="g.id"
+              :label="g.dictValue"
+              :value="g.dictValue"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="状态">
+          <el-select v-model="query.status" placeholder="全部" clearable style="width: 120px">
+            <el-option v-for="s in statusOptions" :key="s.value" :label="s.label" :value="s.value" />
+          </el-select>
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" @click="onSearch">搜索</el-button>
+          <el-button @click="onReset">重置</el-button>
+        </el-form-item>
+      </el-form>
+      <el-button type="primary" class="add-btn" @click="openAdd">
+        <el-icon><Plus /></el-icon>
+        <span>新增学生</span>
+      </el-button>
+    </div>
 
-    <!-- 搜索区 -->
-    <el-form :inline="true" class="search-bar">
-      <el-form-item label="姓名/电话">
-        <el-input v-model="query.keyword" placeholder="姓名或电话" clearable @keyup.enter="onSearch" />
-      </el-form-item>
-      <el-form-item label="年级">
-        <el-select v-model="query.grade" placeholder="全部" clearable style="width: 140px">
-          <el-option v-for="g in gradeOptions" :key="g.id" :label="g.dictValue" :value="g.dictValue" />
-        </el-select>
-      </el-form-item>
-      <el-form-item label="状态">
-        <el-select v-model="query.status" placeholder="全部" clearable style="width: 120px">
-          <el-option v-for="s in statusOptions" :key="s.value" :label="s.label" :value="s.value" />
-        </el-select>
-      </el-form-item>
-      <el-form-item>
-        <el-button type="primary" @click="onSearch">搜索</el-button>
-        <el-button @click="onReset">重置</el-button>
-      </el-form-item>
-    </el-form>
-
-    <!-- 列表 -->
-    <el-table v-loading="loading" :data="list" border stripe empty-text="暂无学生">
-      <el-table-column prop="name" label="姓名" min-width="100" />
+    <!-- 列表：去掉竖线与斑马纹，靠行高与 hover 区分 -->
+    <el-table v-loading="loading" :data="list" empty-text="暂无学生">
+      <el-table-column prop="name" label="姓名" min-width="100">
+        <template #default="{ row }">
+          <span class="cell-name">{{ row.name }}</span>
+        </template>
+      </el-table-column>
       <el-table-column prop="grade" label="年级" min-width="90" />
       <el-table-column prop="phone" label="电话" min-width="130" />
       <el-table-column prop="parentWechat" label="家长微信" min-width="120" />
       <el-table-column prop="address" label="家庭地址" min-width="200" show-overflow-tooltip />
-      <el-table-column prop="price" label="课程价格" min-width="90" align="right">
-        <template #default="{ row }">¥{{ row.price }}</template>
+      <el-table-column prop="price" label="课程价格" min-width="100" align="right">
+        <template #default="{ row }">
+          <span class="price">¥{{ row.price }}</span>
+        </template>
       </el-table-column>
-      <el-table-column label="专属颜色" min-width="80" align="center">
+      <el-table-column label="专属颜色" min-width="90" align="center">
         <template #default="{ row }">
           <span class="color-dot" :style="{ background: row.color }" />
         </template>
       </el-table-column>
-      <el-table-column label="状态" min-width="100" align="center">
+      <el-table-column label="状态" min-width="110" align="center">
         <template #default="{ row }">
-          <el-tag :type="statusTagType(row.status)">
-            {{ row.status === 1 ? '在读' : '暂停' }}
-          </el-tag>
           <el-switch
             :model-value="row.status === 1"
-            active-text=""
-            inactive-text=""
-            style="margin-left: 8px"
+            active-text="在读"
+            inactive-text="暂停"
+            inline-prompt
+            :width="56"
             @change="(val: boolean | string | number) => onToggleStatus(row, val ? 1 : 0)"
           />
         </template>
       </el-table-column>
       <el-table-column prop="remark" label="备注" min-width="120" show-overflow-tooltip />
-      <el-table-column label="操作" min-width="150" fixed="right">
+      <el-table-column label="操作" min-width="130" fixed="right">
         <template #default="{ row }">
           <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
           <el-button link type="danger" @click="onDelete(row)">删除</el-button>
@@ -333,24 +343,48 @@ onMounted(() => {
 </template>
 
 <style scoped>
-.card-header {
+/* 工具条：搜索在左、主操作在右，压成一行（不再单占一行卡片标题） */
+.toolbar {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
 }
 .search-bar {
-  margin-bottom: 16px;
+  flex: 1;
+  min-width: 0;
 }
-.pager {
-  margin-top: 16px;
-  justify-content: flex-end;
+.search-bar :deep(.el-form-item) {
+  margin-right: 12px;
+  margin-bottom: 8px;
+}
+.add-btn {
+  margin-bottom: 8px;
+}
+
+/* 列表 */
+.cell-name {
+  font-weight: 500;
+  color: var(--text-strong);
+}
+.price {
+  font-weight: 600;
+  color: var(--text-strong);
 }
 .color-dot {
   display: inline-block;
-  width: 16px;
-  height: 16px;
-  border-radius: 4px;
-  border: 1px solid #dcdfe6;
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-xs);
+  /* 双层描边，比实线边框更精致 */
+  box-shadow: 0 0 0 2px #fff, 0 0 0 3px var(--border-base);
   vertical-align: middle;
+}
+
+.pager {
+  margin-top: 16px;
+  justify-content: flex-end;
 }
 </style>

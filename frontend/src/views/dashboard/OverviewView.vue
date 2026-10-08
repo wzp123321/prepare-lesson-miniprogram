@@ -7,7 +7,7 @@ import { ElMessage } from 'element-plus'
 import type { LessonStatus, AbsentBy } from '@/types'
 import { fetchMonthStatistic, fetchMonthDetail, fetchMonthIncome, type MonthDetailRow } from '@/api/statistics'
 import { STATUS_META, ABSENT_BY_LABEL } from '@/constants/status'
-import { errMsg } from '@/api/mockData'
+import { errMsg } from '@/utils/error'
 
 function currentMonthStr(): string {
   const d = new Date()
@@ -78,39 +78,45 @@ onMounted(load)
     <el-skeleton v-if="loading" :rows="8" animated />
 
     <template v-else-if="statistic">
-      <!-- 总览卡片 -->
-      <el-row :gutter="12" style="margin-bottom: 12px">
+      <!-- 总览指标 -->
+      <el-row :gutter="12" class="metrics">
         <el-col :span="4">
-          <el-card shadow="never" header="排课 (N)">
+          <el-card shadow="never">
+            <div class="metric-label">排课<span class="metric-code">N</span></div>
             <div class="metric">{{ statistic.scheduled }}</div>
           </el-card>
         </el-col>
         <el-col :span="4">
-          <el-card shadow="never" header="已上 (X)">
-            <div class="metric" style="color: #67c23a">{{ statistic.normal }}</div>
+          <el-card shadow="never">
+            <div class="metric-label">已上<span class="metric-code">X</span></div>
+            <div class="metric" style="color: var(--success)">{{ statistic.normal }}</div>
           </el-card>
         </el-col>
         <el-col :span="6">
-          <el-card shadow="never" header="顺延 (Y)">
-            <div class="metric" style="color: #f56c6c">{{ statistic.absent }}</div>
+          <el-card shadow="never">
+            <div class="metric-label">顺延<span class="metric-code">Y</span></div>
+            <div class="metric" style="color: var(--danger)">{{ statistic.absent }}</div>
             <div class="sub">
-              学生请假 a={{ statistic.absentByStudent }} ／ 老师请假 b={{ statistic.absentByTeacher }}
+              学生请假 {{ statistic.absentByStudent }} ／ 老师请假 {{ statistic.absentByTeacher }}
             </div>
           </el-card>
         </el-col>
         <el-col :span="4">
-          <el-card shadow="never" header="已补 (Z)">
-            <div class="metric" style="color: #409eff">{{ statistic.madeUp }}</div>
+          <el-card shadow="never">
+            <div class="metric-label">已补<span class="metric-code">Z</span></div>
+            <div class="metric" style="color: var(--brand-500)">{{ statistic.madeUp }}</div>
           </el-card>
         </el-col>
         <el-col :span="3">
-          <el-card shadow="never" header="作废 (W)">
-            <div class="metric" style="color: #909399">{{ statistic.cancelled }}</div>
+          <el-card shadow="never">
+            <div class="metric-label">作废<span class="metric-code">W</span></div>
+            <div class="metric" style="color: var(--text-muted)">{{ statistic.cancelled }}</div>
           </el-card>
         </el-col>
         <el-col :span="3">
-          <el-card shadow="never" header="待补 (K)">
-            <div class="metric" style="color: #e6a23c">{{ statistic.pending }}</div>
+          <el-card shadow="never">
+            <div class="metric-label">待补<span class="metric-code">K</span></div>
+            <div class="metric" style="color: var(--warning)">{{ statistic.pending }}</div>
           </el-card>
         </el-col>
       </el-row>
@@ -128,7 +134,7 @@ onMounted(load)
 
       <!-- 历史月未上课明细 -->
       <el-card shadow="never" header="历史月未上课明细">
-        <el-table :data="detail" border size="small">
+        <el-table :data="detail" size="small">
           <el-table-column prop="studentName" label="学生" width="120" />
           <el-table-column prop="lessonDate" label="日期" width="140" />
           <el-table-column prop="slot" label="时段" width="130" />
@@ -153,18 +159,32 @@ onMounted(load)
 </template>
 
 <style scoped>
-.el-card {
-  border-radius: 8px;
+.metrics :deep(.el-card__body) {
+  padding: 14px 16px;
+}
+.metric-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.metric-code {
+  padding: 0 4px;
+  border-radius: var(--radius-xs);
+  background: var(--surface-sunken);
+  font-size: 10px;
+  color: var(--text-faint);
 }
 .metric {
-  font-size: 28px;
-  font-weight: 700;
-  text-align: center;
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 1.2;
 }
 .sub {
+  margin-top: 6px;
   font-size: 12px;
-  color: #909399;
-  text-align: center;
-  margin-top: 4px;
+  color: var(--text-muted);
 }
 </style>
