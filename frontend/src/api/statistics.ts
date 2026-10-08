@@ -8,7 +8,7 @@ const USE_MOCK = false
 
 // BE-API-30 月总览卡片（排 N/已上 X/顺延 Y 拆 学生a+老师b/已补 Z/作废 W/待补 K）
 export function fetchMonthStatistic(params: { year: number; month: number }): Promise<MonthStatistic> {
-  if (!USE_MOCK) return request.get<MonthStatistic, MonthStatistic>('/statistics/month', { params })
+  if (!USE_MOCK) return request.post<MonthStatistic, MonthStatistic>('/statistics/month', undefined, { params })
   return Promise.resolve({
     scheduled: 30,
     normal: 24,
@@ -30,22 +30,20 @@ export interface MonthDetailRow {
   absentBy: string
   absentReason: string
 }
-export function fetchMonthDetail(params: { year: number; month: number }): Promise<{ list: MonthDetailRow[] }> {
+export function fetchMonthDetail(params: { year: number; month: number }): Promise<MonthDetailRow[]> {
   if (!USE_MOCK) {
-    return request.get<{ list: MonthDetailRow[] }, { list: MonthDetailRow[] }>('/statistics/month/detail', { params })
+    return request.post<MonthDetailRow[], MonthDetailRow[]>('/statistics/month/detail', undefined, { params })
   }
-  return Promise.resolve({
-    list: [
-      { lessonDate: '2026-09-05', studentName: '王小明', slot: '14:00-15:30', status: 'ABSENT', absentBy: 'student', absentReason: '学生病假' },
-      { lessonDate: '2026-09-10', studentName: '张小红', slot: '09:00-10:30', status: 'CANCELLED', absentBy: '', absentReason: '法定节假日' }
-    ]
-  })
+  return Promise.resolve([
+    { lessonDate: '2026-09-05', studentName: '王小明', slot: '14:00-15:30', status: 'ABSENT', absentBy: 'student', absentReason: '学生病假' },
+    { lessonDate: '2026-09-10', studentName: '张小红', slot: '09:00-10:30', status: 'CANCELLED', absentBy: '', absentReason: '法定节假日' }
+  ])
 }
 
 // BE-API-32 月收入（口径 (NORMAL+MADEUP)×price）
 export function fetchMonthIncome(params: { year: number; month: number }): Promise<{ income: number; formula: string }> {
   if (!USE_MOCK) {
-    return request.get<{ income: number; formula: string }, { income: number; formula: string }>('/statistics/month/income', { params })
+    return request.post<{ income: number; formula: string }, { income: number; formula: string }>('/statistics/month/income', undefined, { params })
   }
   return Promise.resolve({ income: 5000, formula: '(NORMAL+MADEUP)×price' })
 }

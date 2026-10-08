@@ -70,7 +70,7 @@ function seedMonth(yyyymm: string): void {
 // ===================== BE-API-15 当月网格 =====================
 export function getMonth(params: { year: number; month: number }): Promise<MonthGrid> {
   if (!USE_MOCK) {
-    return request.get<MonthGrid, MonthGrid>('/lessons/month', { params })
+    return request.post<MonthGrid, MonthGrid>('/lessons/month', undefined, { params })
   }
   const { year, month } = params
   const ym = `${year}-${String(month).padStart(2, '0')}`
@@ -141,7 +141,7 @@ export function createLesson(data: {
 // ===================== BE-API-17 删课（拖出/点删） =====================
 export function deleteLesson(id: number): Promise<void> {
   if (!USE_MOCK) {
-    return request.delete<void, void>(`/lessons/${id}`)
+    return request.post<void, void>('/lessons/delete', { id })
   }
   const idx = Object.keys(mockCells).find((k) => mockCells[k].id === id)
   if (idx) delete mockCells[idx]
@@ -154,7 +154,7 @@ export function updateLesson(
   data: { slotId: number; lessonDate: string }
 ): Promise<Lesson> {
   if (!USE_MOCK) {
-    return request.put<Lesson, Lesson>(`/lessons/${id}`, data)
+    return request.post<Lesson, Lesson>('/lessons/update', { id, ...data })
   }
   const srcKey = Object.keys(mockCells).find((k) => mockCells[k].id === id)
   if (!srcKey) return Promise.reject(new Error('排课不存在'))
@@ -193,7 +193,6 @@ export function saveMonth(data: SaveMonthPayload): Promise<{ closedCount: number
   if (!USE_MOCK) {
     return request.post<{ closedCount: number }, { closedCount: number }>('/lessons/save-month', data)
   }
-  // mock：模拟「关闭上月顺延」已完成，返回 0（真实后端按上月 ABSENT&closed=0 计数）
   return Promise.resolve({ closedCount: 0 })
 }
 
@@ -203,7 +202,7 @@ export function fetchStudentExport(
   params: { year: number; month: number }
 ): Promise<StudentExport> {
   if (!USE_MOCK) {
-    return request.get<StudentExport, StudentExport>(`/lessons/student/${studentId}/export`, { params })
+    return request.post<StudentExport, StudentExport>('/lessons/student-export', { studentId, ...params })
   }
   const { year, month } = params
   const ym = `${year}-${String(month).padStart(2, '0')}`
@@ -226,7 +225,7 @@ export function markAbsent(
   id: number,
   data: { absentBy: AbsentBy; absentReason: string }
 ): Promise<Lesson> {
-  if (!USE_MOCK) return request.put<Lesson, Lesson>(`/lessons/${id}/absent`, data)
+  if (!USE_MOCK) return request.post<Lesson, Lesson>('/lessons/absent', { id, ...data })
   const key = Object.keys(mockCells).find((k) => mockCells[k].id === id)
   if (key) {
     mockCells[key].status = 'ABSENT'
@@ -254,7 +253,7 @@ export function markAbsent(
 // ===================== BE-API-22 状态切换 =====================
 // TODO(W4-02)
 export function changeLessonStatus(id: number, data: { status: LessonStatus }): Promise<Lesson> {
-  if (!USE_MOCK) return request.put<Lesson, Lesson>(`/lessons/${id}/status`, data)
+  if (!USE_MOCK) return request.post<Lesson, Lesson>('/lessons/status', { id, ...data })
   const key = Object.keys(mockCells).find((k) => mockCells[k].id === id)
   if (key) mockCells[key].status = data.status
   return Promise.resolve(
@@ -290,11 +289,10 @@ const mockPendingToday: LessonCell[] = [
 // ===================== BE-API-33 今日视图 =====================
 export function fetchToday(): Promise<{ lessons: LessonCell[]; pendingToday: LessonCell[] }> {
   if (!USE_MOCK) {
-    return request.get<{ lessons: LessonCell[]; pendingToday: LessonCell[] }, { lessons: LessonCell[]; pendingToday: LessonCell[] }>(
+    return request.post<{ lessons: LessonCell[]; pendingToday: LessonCell[] }, { lessons: LessonCell[]; pendingToday: LessonCell[] }>(
       '/lessons/today'
     )
   }
-  // 将今日课程写入 mockCells，便于标记接口（markAbsent/changeLessonStatus）按 id 命中
   const t = todayStr()
   const seedToday = (id: number, studentId: number, slotId: number, status: LessonStatus): void => {
     const key = cellKey(t, slotId)

@@ -6,10 +6,13 @@ import lombok.Data;
 
 /**
  * 安排补课请求体（BE-API-24 变体：仅写补课日期，status 保持 ABSENT 表示「已约」）。
- * 补课日期可跨月，不占新格。
+ * 补课日期可跨月，不占新格。id 在动作化改造后由 body 传入（原路径变量已移除）。
  */
 @Data
 public class MakeUpDTO {
+
+    /** 排课 ID */
+    private Long id;
 
     /** 补课日期 DATE，可跨月 */
     @NotNull(message = "补课日期(makeUpDate)不能为空")

@@ -4,9 +4,9 @@
 // 月收入 el-statistic；历史月未上课明细 el-table（学生/日期/时段/原因）。历史月只读。
 import { onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import type { LessonStatus } from '@/types'
+import type { LessonStatus, AbsentBy } from '@/types'
 import { fetchMonthStatistic, fetchMonthDetail, fetchMonthIncome, type MonthDetailRow } from '@/api/statistics'
-import { STATUS_META } from '@/constants/status'
+import { STATUS_META, ABSENT_BY_LABEL } from '@/constants/status'
 import { errMsg } from '@/api/mockData'
 
 function currentMonthStr(): string {
@@ -45,7 +45,7 @@ async function load(): Promise<void> {
     ])
     statistic.value = stat
     income.value = inc
-    detail.value = det.list
+    detail.value = det
   } catch (err) {
     ElMessage.error(errMsg(err))
   } finally {
@@ -137,6 +137,12 @@ onMounted(load)
               <el-tag :type="STATUS_META[row.status as LessonStatus].tagType" size="small">
                 {{ STATUS_META[row.status as LessonStatus].label }}
               </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="请假方" width="100">
+            <template #default="{ row }: { row: MonthDetailRow }">
+              <span v-if="row.absentBy">{{ ABSENT_BY_LABEL[row.absentBy as AbsentBy] }}</span>
+              <span v-else>—</span>
             </template>
           </el-table-column>
           <el-table-column prop="absentReason" label="原因" />

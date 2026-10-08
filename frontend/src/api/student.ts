@@ -21,7 +21,7 @@ export interface StudentQuery {
 // BE-API-01 列表+搜索（?keyword=&grade=&status=&page=&size=）
 export function fetchStudents(params: StudentQuery): Promise<PageResult<Student>> {
   if (!USE_MOCK) {
-    return request.get<PageResult<Student>, PageResult<Student>>('/students', { params })
+    return request.post<PageResult<Student>, PageResult<Student>>('/students/list', params)
   }
   const { keyword, grade, status, page = 1, size = 10 } = params
   let list = clone(mockStudents)
@@ -39,8 +39,8 @@ export function fetchStudents(params: StudentQuery): Promise<PageResult<Student>
 // BE-API-02 详情（含 pendingMakeUpCount）
 export function fetchStudentDetail(id: number): Promise<Student & { pendingMakeUpCount: number }> {
   if (!USE_MOCK) {
-    return request.get<Student & { pendingMakeUpCount: number }, Student & { pendingMakeUpCount: number }>(
-      `/students/${id}`
+    return request.post<Student & { pendingMakeUpCount: number }, Student & { pendingMakeUpCount: number }>(
+      '/students/detail', { id }
     )
   }
   const s = mockStudents.find((x) => x.id === id)
@@ -50,7 +50,7 @@ export function fetchStudentDetail(id: number): Promise<Student & { pendingMakeU
 
 // BE-API-03 新增（body: name,grade,phone,parentWechat,address,price,color,remark）
 export function createStudent(data: Partial<Student>): Promise<Student> {
-  if (!USE_MOCK) return request.post<Student, Student>('/students', data)
+  if (!USE_MOCK) return request.post<Student, Student>('/students/create', data)
   const id = ++studentSeq
   const color = data.color || autoColor(mockStudents.map((s) => s.color))
   const now = '2026-01-01 00:00:00'
@@ -74,7 +74,7 @@ export function createStudent(data: Partial<Student>): Promise<Student> {
 
 // BE-API-04 修改
 export function updateStudent(id: number, data: Partial<Student>): Promise<Student> {
-  if (!USE_MOCK) return request.put<Student, Student>(`/students/${id}`, data)
+  if (!USE_MOCK) return request.post<Student, Student>('/students/update', { ...data, id })
   const s = mockStudents.find((x) => x.id === id)
   if (!s) return Promise.reject(new Error('学生不存在'))
   Object.assign(s, data, { updateTime: '2026-01-01 00:00:00' })
@@ -83,7 +83,7 @@ export function updateStudent(id: number, data: Partial<Student>): Promise<Stude
 
 // BE-API-05 删除（删除保护：存在未结课程或未来排课时返回 409）
 export function deleteStudent(id: number): Promise<void> {
-  if (!USE_MOCK) return request.delete<void, void>(`/students/${id}`)
+  if (!USE_MOCK) return request.post<void, void>('/students/delete', { id })
   const idx = mockStudents.findIndex((x) => x.id === id)
   if (idx === -1) return Promise.reject(new Error('学生不存在'))
   // mock 中以「在读」状态模拟存在未结课程/未来排课 → 触发删除保护

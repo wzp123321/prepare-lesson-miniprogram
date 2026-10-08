@@ -6,6 +6,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { LessonCell, LessonStatus, AbsentBy, MonthGrid, Student } from '@/types'
 import { getMonth, markAbsent, changeLessonStatus, cellKey, slotLabel } from '@/api/lesson'
+import { arrangeMakeUp } from '@/api/makeUp'
 import { fetchStudents } from '@/api/student'
 import { STATUS_META } from '@/constants/status'
 import { errMsg } from '@/api/mockData'
@@ -76,7 +77,8 @@ const statusForm = reactive({
   cell: null as LessonCell | null,
   mark: 'NORMAL' as LessonStatus,
   absentBy: 'student' as AbsentBy,
-  reason: ''
+  reason: '',
+  makeUpDate: ''
 })
 
 function openStatusDialog(cell: LessonCell): void {
@@ -84,6 +86,7 @@ function openStatusDialog(cell: LessonCell): void {
   statusForm.mark = cell.status === 'UNTAKEN' ? 'NORMAL' : cell.status
   statusForm.absentBy = cell.absentBy ?? 'student'
   statusForm.reason = cell.absentReason ?? ''
+  statusForm.makeUpDate = ''
   statusDialog.value = true
 }
 
@@ -116,6 +119,15 @@ async function submitStatus(): Promise<void> {
         absentReason: statusForm.reason.trim()
       })
       applyUpdate(cell, res)
+    } else if (statusForm.mark === 'MADEUP') {
+      // 已补走 BE-API-24（写补课日期 + 置 MADEUP + 关单），changeLessonStatus 状态机不允许 ABSENT→MADEUP
+      if (!statusForm.makeUpDate) {
+        ElMessage.warning('请选择补课日期')
+        return
+      }
+      await arrangeMakeUp(cell.id, { makeUpDate: statusForm.makeUpDate })
+      const key = cellKey(cell.lessonDate, cell.slotId)
+      lessons[key] = { ...lessons[key], status: 'MADEUP', makeUpDate: statusForm.makeUpDate }
     } else {
       const res = await changeLessonStatus(cell.id, { status: statusForm.mark })
       applyUpdate(cell, res)
@@ -309,6 +321,16 @@ onMounted(loadAll)
                 type="textarea"
                 :rows="2"
                 placeholder="必填：顺延原因"
+              />
+            </el-form-item>
+          </template>
+          <template v-else-if="statusForm.mark === 'MADEUP'">
+            <el-form-item label="补课日期" required>
+              <el-date-picker
+                v-model="statusForm.makeUpDate"
+                type="date"
+                value-format="YYYY-MM-DD"
+                placeholder="选择补课日期"
               />
             </el-form-item>
           </template>

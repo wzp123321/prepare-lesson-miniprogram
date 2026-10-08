@@ -16,13 +16,13 @@ const mockPending: LessonCell[] = [
 
 // BE-API-23 待补列表（status=ABSENT AND closed=0，全局实时）
 export function fetchPendingMakeUp(): Promise<LessonCell[]> {
-  if (!USE_MOCK) return request.get<LessonCell[], LessonCell[]>('/make-up/pending')
+  if (!USE_MOCK) return request.post<LessonCell[], LessonCell[]>('/make-up/pending')
   return Promise.resolve(clone(mockPending.filter((p) => !p.closed)))
 }
 
-// BE-API-24 安排补课（body makeUpDate，可跨月）
+// BE-API-24 安排补课（body: id + makeUpDate，可跨月）
 export function arrangeMakeUp(id: number, data: { makeUpDate: string }): Promise<void> {
-  if (!USE_MOCK) return request.put<void, void>(`/lessons/${id}/make-up`, data)
+  if (!USE_MOCK) return request.post<void, void>('/lessons/make-up', { id, ...data })
   const p = mockPending.find((x) => x.id === id)
   if (p) p.makeUpDate = data.makeUpDate
   return Promise.resolve()
@@ -30,7 +30,7 @@ export function arrangeMakeUp(id: number, data: { makeUpDate: string }): Promise
 
 // BE-API-25 手动关闭（「已安排进本月课程」）—— 仅置 closed=1，status 保持 ABSENT
 export function closeMakeUp(lessonId: number): Promise<void> {
-  if (!USE_MOCK) return request.put<void, void>(`/make-up/${lessonId}/close`)
+  if (!USE_MOCK) return request.post<void, void>('/make-up/close', { lessonId })
   const p = mockPending.find((x) => x.id === lessonId)
   if (p) p.closed = true
   return Promise.resolve()

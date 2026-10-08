@@ -202,8 +202,12 @@ public class LessonServiceImpl implements LessonService {
         if (makeUpDate == null) {
             throw new BusinessException(400, "补课日期(makeUpDate)不能为空");
         }
-        // status 保持 ABSENT、closed 保持 0，仅记录补课日期（表示「已约」），可跨月
+        // 契约 BE-API-24：安排补课即登记「已补」完成态（status=MADEUP、closed=1），可跨月。
+        // 此前拆成 arrangeMakeUp(仅写日期) + 契约外 made-up 两步，导致前端无入口、MADEUP 不可达；
+        // 现收敛为一次调用，使补课闭环在 BE-API-24 即达成。
         lesson.setMakeUpDate(makeUpDate);
+        lesson.setStatus(LessonStatus.MADEUP.name());
+        lesson.setClosed(1);
         lessonMapper.updateById(lesson);
     }
 

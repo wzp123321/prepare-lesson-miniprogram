@@ -7,7 +7,7 @@ import { mockGrades, mockAbsentReasons } from './mockData'
 
 const USE_MOCK = false
 
-const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T
+const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v) as string) as T
 let dictSeq = 9000
 
 function storeOf(type: string): Dict[] {
@@ -16,7 +16,7 @@ function storeOf(type: string): Dict[] {
 
 // BE-API-26 列表（按 type=grade|absent_reason）
 export function fetchDicts(type: string): Promise<Dict[]> {
-  if (!USE_MOCK) return request.get<Dict[], Dict[]>('/dicts', { params: { type } })
+  if (!USE_MOCK) return request.post<Dict[], Dict[]>('/dicts/list', { type })
   const list = storeOf(type)
     .filter((d) => d.dictType === type)
     .sort((a, b) => a.sortOrder - b.sortOrder)
@@ -25,7 +25,7 @@ export function fetchDicts(type: string): Promise<Dict[]> {
 
 // BE-API-27 新增（body: dictType,dictValue,sortOrder,enabled）
 export function createDict(data: Partial<Dict>): Promise<Dict> {
-  if (!USE_MOCK) return request.post<Dict, Dict>('/dicts', data)
+  if (!USE_MOCK) return request.post<Dict, Dict>('/dicts/create', data)
   const dictType = data.dictType || 'grade'
   const id = ++dictSeq
   const d: Dict = {
@@ -41,7 +41,7 @@ export function createDict(data: Partial<Dict>): Promise<Dict> {
 
 // BE-API-28 修改
 export function updateDict(id: number, data: Partial<Dict>): Promise<Dict> {
-  if (!USE_MOCK) return request.put<Dict, Dict>(`/dicts/${id}`, data)
+  if (!USE_MOCK) return request.post<Dict, Dict>('/dicts/update', { ...data, id })
   const d = [...mockGrades, ...mockAbsentReasons].find((x) => x.id === id)
   if (!d) return Promise.reject(new Error('字典项不存在'))
   Object.assign(d, data)
@@ -50,7 +50,7 @@ export function updateDict(id: number, data: Partial<Dict>): Promise<Dict> {
 
 // BE-API-29 删除
 export function deleteDict(id: number): Promise<void> {
-  if (!USE_MOCK) return request.delete<void, void>(`/dicts/${id}`)
+  if (!USE_MOCK) return request.post<void, void>('/dicts/delete', { id })
   const remove = (arr: Dict[]) => {
     const i = arr.findIndex((x) => x.id === id)
     if (i > -1) arr.splice(i, 1)

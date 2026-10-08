@@ -2,7 +2,8 @@
   "requirement_source": "D:/workspace/private/collect/prepare-lesson-miniprogram/备课排课管理系统PRD.md",
   "tier": "重",
   "version": "V1.0.0_I1",
-  "current_stage": "卡点④ 提交门：用户选择自行提交，已交付变更清单(.sdd/commit-changelist.md)；后端运行时验证待用户环境(mvn+Q17)；全流程 SDD 产物就绪",
+  "status": "DELIVERED",
+  "current_stage": "已完成并交付（开发侧）：代码完整/构建通过/三缺口修复/契约对齐；SDD 全流程产物就绪。剩余均为用户侧：后端 mvn compile+Q17 库连、git 自提交、vite 代理端口(8080)与后端端口(18899)对齐待确认",
   "completed_modules": [
     "后端概设", "前端概设(已对齐)", "UI原型(已 vite build)",
     "后端任务拆解(6波50任务)", "前端任务拆解(5波33任务)",

@@ -6,9 +6,14 @@ import lombok.Data;
 
 /**
  * 改课请求（BE-API-18）。换时段 / 换日期，courseId 不变（同一门课）。
+ * id 在动作化改造后由 body 传入（原路径变量已移除）。
  */
 @Data
 public class UpdateLessonDTO {
+
+    /** 排课 ID（BE-API-18） */
+    @NotNull(message = "排课ID(id)不能为空")
+    private Long id;
 
     /** 时间段（网格列） */
     @NotNull(message = "时间段不能为空")

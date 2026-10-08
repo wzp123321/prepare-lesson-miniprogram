@@ -1,0 +1,14 @@
+{
+    "configurations": [
+        {
+            "type": "java",
+            "name": "Spring Boot-ScheduleApplication<schedule>",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "mainClass": "com.lesson.schedule.ScheduleApplication",
+            "projectName": "schedule",
+            "args": "",
+            "envFile": "${workspaceFolder}/.env"
+        }
+    ]
+}

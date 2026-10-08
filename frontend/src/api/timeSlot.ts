@@ -14,14 +14,14 @@ const confirmedDeletes = new Set<number>()
 
 // BE-API-06 列表（按 sortOrder）
 export function fetchTimeSlots(): Promise<TimeSlot[]> {
-  if (!USE_MOCK) return request.get<TimeSlot[], TimeSlot[]>('/time-slots')
+  if (!USE_MOCK) return request.post<TimeSlot[], TimeSlot[]>('/time-slots/list')
   const list = [...mockTimeSlots].sort((a, b) => a.sortOrder - b.sortOrder)
   return Promise.resolve(clone(list))
 }
 
 // BE-API-07 新增（body: name?,startTime,endTime,sortOrder,enabled）
 export function createTimeSlot(data: Partial<TimeSlot>): Promise<TimeSlot> {
-  if (!USE_MOCK) return request.post<TimeSlot, TimeSlot>('/time-slots', data)
+  if (!USE_MOCK) return request.post<TimeSlot, TimeSlot>('/time-slots/create', data)
   const id = ++slotSeq
   const ts: TimeSlot = {
     id,
@@ -37,7 +37,7 @@ export function createTimeSlot(data: Partial<TimeSlot>): Promise<TimeSlot> {
 
 // BE-API-08 修改
 export function updateTimeSlot(id: number, data: Partial<TimeSlot>): Promise<TimeSlot> {
-  if (!USE_MOCK) return request.put<TimeSlot, TimeSlot>(`/time-slots/${id}`, data)
+  if (!USE_MOCK) return request.post<TimeSlot, TimeSlot>('/time-slots/update', { ...data, id })
   const t = mockTimeSlots.find((x) => x.id === id)
   if (!t) return Promise.reject(new Error('时间段不存在'))
   Object.assign(t, data)
@@ -46,7 +46,7 @@ export function updateTimeSlot(id: number, data: Partial<TimeSlot>): Promise<Tim
 
 // BE-API-09 删除（有排课引用返回 409 + 引用计数，前端弹确认）
 export function deleteTimeSlot(id: number): Promise<void> {
-  if (!USE_MOCK) return request.delete<void, void>(`/time-slots/${id}`)
+  if (!USE_MOCK) return request.post<void, void>('/time-slots/delete', { id })
   const idx = mockTimeSlots.findIndex((x) => x.id === id)
   if (idx === -1) return Promise.reject(new Error('时间段不存在'))
   // mock 中以「启用」状态模拟被排课引用；首次删除弹确认，确认后再删放行
@@ -68,7 +68,7 @@ export function deleteTimeSlot(id: number): Promise<void> {
 
 // BE-API-10 排序调整（body: [{id, sortOrder}]）
 export function sortTimeSlots(data: { id: number; sortOrder: number }[]): Promise<void> {
-  if (!USE_MOCK) return request.put<void, void>('/time-slots/sort', data)
+  if (!USE_MOCK) return request.post<void, void>('/time-slots/sort', data)
   data.forEach((d) => {
     const t = mockTimeSlots.find((x) => x.id === d.id)
     if (t) t.sortOrder = d.sortOrder

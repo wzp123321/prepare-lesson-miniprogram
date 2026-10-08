@@ -1,30 +1,27 @@
 # ============================================================
-# 生产环境（SPRING_PROFILES_ACTIVE=prod）
-# 关闭 SQL 日志、收紧日志级别、启用 SSL，提升性能与安全。
-# 生产部署务必经环境变量显式注入凭据（密码不要写死在此文件）：
-#   java -jar schedule.jar --SPRING_PROFILES_ACTIVE=prod \
-#     --DB_HOST=47.116.35.76 --DB_NAME=lesson_db \
-#     --DB_USER=prod_user --DB_PASSWORD=******
+# 生产环境（SPRING_PROFILES_ACTIVE=prod）—— 库部署于 47.116.35.76
+# 目标：关闭 SQL 日志、收紧日志级别，减少 I/O 与敏感信息外泄。
+#
+# ⚠️ 账号 / 密码不设默认值：未注入即启动失败，避免误用开发默认值连上生产库。
+#    启动示例（凭据务必经环境变量显式注入）：
+#      java -jar schedule.jar --SPRING_PROFILES_ACTIVE=prod \
+#        --DB_HOST=47.116.35.76 --DB_NAME=lesson_db \
+#        --DB_USER=prod_user --DB_PASSWORD=******
+#    亦可改用环境变量：DB_USER / DB_PASSWORD
 # ============================================================
+spring:
+  datasource:
+    # characterEncoding 取 Java 字符集名 UTF-8（不是 MySQL 的 utf8mb4）
+    # useSSL=false：47.116.35.76 未配置 SSL 证书（用户确认），开启会连不上
+    url: jdbc:mysql://${DB_HOST:47.116.35.76}:${DB_PORT:3306}/${DB_NAME:lesson_db}?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: ${DB_USER}
+    password: ${DB_PASSWORD}
+
 mybatis-plus:
   configuration:
-    # 生产关闭 SQL 日志，降低 I/O 与敏感信息泄露风险
+    # 生产关闭 SQL 日志
     log-impl: org.apache.ibatis.logging.nologging.NoLoggingImpl
 
 logging:
   level:
     com.lesson.schedule: warn
-    root: info
-
-spring:
-  datasource:
-    # 生产强制启用 SSL（公共配置里默认 false，此处覆盖）
-    url: jdbc:mysql://${DB_HOST:47.116.35.76}:${DB_PORT:3306}/${DB_NAME:lesson_db}?useUnicode=true&characterEncoding=utf8mb4&serverTimezone=Asia/Shanghai&useSSL=true&allowPublicKeyRetrieval=false
-
-# 生产可开启的兜底项（按需取消注释）：
-# server:
-#   port: 8080          # 如需非 8080 端口
-# mybatis-plus:
-#   global-config:
-#     db-config:
-#       logic-delete-field: deleted   # 启用逻辑删除
