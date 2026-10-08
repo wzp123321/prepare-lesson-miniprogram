@@ -1,0 +1,40 @@
+# ============================================================
+# 公共配置（dev / prod 共享）
+# 环境切换：SPRING_PROFILES_ACTIVE=dev|prod（默认 dev）
+#   java -jar schedule.jar --SPRING_PROFILES_ACTIVE=prod
+# ============================================================
+server:
+  port: 8080
+
+spring:
+  application:
+    name: lesson-schedule
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+  datasource:
+    # ⚠️ Q17 待确认：MySQL 库名 / 账号 / 密码 由用户补充，此处仅占位，不硬编码。
+    #    部署地址固定 47.116.35.76（questions.md Q1）。
+    #    启动时可经环境变量 / 命令行参数注入，例如：
+    #      java -jar schedule.jar \
+    #        --DB_HOST=47.116.35.76 --DB_PORT=3306 \
+    #        --DB_NAME=lesson_db --DB_USER=root --DB_PASSWORD=******
+    #    本地开发可覆盖：--DB_HOST=localhost
+    url: jdbc:mysql://${DB_HOST:47.116.35.76}:${DB_PORT:3306}/${DB_NAME:lesson_db}?useUnicode=true&characterEncoding=utf8mb4&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: ${DB_USER:root}
+    password: ${DB_PASSWORD:}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+mybatis-plus:
+  # Mapper XML 位置（src/main/resources/mapper/*.xml）
+  mapper-locations: classpath*:mapper/*.xml
+  # 实体类别名包
+  type-aliases-package: com.lesson.schedule.entity
+  configuration:
+    # 下划线 -> 驼峰 自动映射（实体 camelCase 对应表列 snake_case）
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      # 主键自增，与 db/schema.sql 的 AUTO_INCREMENT 一致
+      id-type: auto
+      # 逻辑删除（可选，默认未启用；如需软删除取消下行注释并指定字段）
+      # logic-delete-field: deleted

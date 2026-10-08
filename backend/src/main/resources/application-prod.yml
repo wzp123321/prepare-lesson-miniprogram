@@ -1,0 +1,30 @@
+# ============================================================
+# 生产环境（SPRING_PROFILES_ACTIVE=prod）
+# 关闭 SQL 日志、收紧日志级别、启用 SSL，提升性能与安全。
+# 生产部署务必经环境变量显式注入凭据（密码不要写死在此文件）：
+#   java -jar schedule.jar --SPRING_PROFILES_ACTIVE=prod \
+#     --DB_HOST=47.116.35.76 --DB_NAME=lesson_db \
+#     --DB_USER=prod_user --DB_PASSWORD=******
+# ============================================================
+mybatis-plus:
+  configuration:
+    # 生产关闭 SQL 日志，降低 I/O 与敏感信息泄露风险
+    log-impl: org.apache.ibatis.logging.nologging.NoLoggingImpl
+
+logging:
+  level:
+    com.lesson.schedule: warn
+    root: info
+
+spring:
+  datasource:
+    # 生产强制启用 SSL（公共配置里默认 false，此处覆盖）
+    url: jdbc:mysql://${DB_HOST:47.116.35.76}:${DB_PORT:3306}/${DB_NAME:lesson_db}?useUnicode=true&characterEncoding=utf8mb4&serverTimezone=Asia/Shanghai&useSSL=true&allowPublicKeyRetrieval=false
+
+# 生产可开启的兜底项（按需取消注释）：
+# server:
+#   port: 8080          # 如需非 8080 端口
+# mybatis-plus:
+#   global-config:
+#     db-config:
+#       logic-delete-field: deleted   # 启用逻辑删除

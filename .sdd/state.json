@@ -1,0 +1,44 @@
+{
+  "requirement_source": "D:/workspace/private/collect/prepare-lesson-miniprogram/备课排课管理系统PRD.md",
+  "tier": "重",
+  "version": "V1.0.0_I1",
+  "current_stage": "卡点④ 提交门：用户选择自行提交，已交付变更清单(.sdd/commit-changelist.md)；后端运行时验证待用户环境(mvn+Q17)；全流程 SDD 产物就绪",
+  "completed_modules": [
+    "后端概设", "前端概设(已对齐)", "UI原型(已 vite build)",
+    "后端任务拆解(6波50任务)", "前端任务拆解(5波33任务)",
+    "后端 Wave A~F 实现落地", "前端 Wave 1~4 实现落地(build通过)",
+    "卡点③: 后端A✓/前端1✓；Wave D返工✓；Wave E评审✓；Wave4评审✓；Wave F评审✓→返工✓→复评0🔴",
+    "Wave5 路径审计: 10阻断 → Wave G 补齐/改名/改参 → 复审计0阻断",
+    "Wave G1(Lesson: 16/17/18/33 + 19语义 + 23/25改名)",
+    "Wave G2(Statistics: 30/31参数 + 31改名 + 32月收入)",
+    "validation依赖修复(pom + 8文件 javax→jakarta)",
+    "BE-API-19 契约回写(overview-be §2.4.4)",
+    "Wave5 前端联调准备(USE_MOCK=false + npm run build 通过)",
+    "卡点④ 变更清单交付(用户自提交，未执行 git)"
+  ],
+  "integration_blockers": {
+    "all_resolved": true,
+    "recheck_result": "0 残留阻断，无新阻断",
+    "backend_orphans_kept": ["/lessons/{id}/made-up", "/students/{id}/pause"]
+  },
+  "artifacts": {
+    "backend": "D:/workspace/private/collect/prepare-lesson-miniprogram/backend/ (Spring Boot 工程, 无天溯依赖)",
+    "frontend": "D:/workspace/private/collect/prepare-lesson-miniprogram/frontend/ (Vue3+Vite+TS+Element Plus, build 通过)"
+  },
+  "constraints": {
+    "frontend_component": "Element Plus (el-*) 替代天溯 te-*",
+    "backend_stack": "Spring Boot + MySQL 8.0 + MyBatis-Plus",
+    "reference_code": "无参考具体代码，仅借 ai-knowledge 方法论",
+    "no_login": true,
+    "web_first": true
+  },
+  "pending_confirmations": [
+    "Q17 MySQL 连接信息(库名/账号/密码) — 后端真实联调必需",
+    "🟡-A 后端冗余 insert 缺 useGeneratedKeys",
+    "🟡 前端按需引入减体积 / SUCCESS_CODE 联调前确认",
+    "U1-U5 UI 未决", "A-17 统一返回体(建议补)",
+    "后端全仓 javax.* 其他命名空间(如 javax.persistence)待用户 mvn compile 暴露并迁移",
+    "后端需用户环境 mvn compile + spring-boot:run + Q17 库连接，沙箱无 JDK/Maven 无法运行",
+    "孤儿端点 /lessons/{id}/made-up、/students/{id}/pause 待决(补契约或移除)"
+  ]
+}

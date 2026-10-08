@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lesson.schedule.mapper.TimeSlotMapper">
+
+    <sql id="Base_Column_List">
+        id, start_time, end_time, sort_order, enabled, create_time, update_time
+    </sql>
+
+    <!-- 按 sort_order 升序返回全部时段 -->
+    <select id="listOrdered" resultType="com.lesson.schedule.entity.TimeSlot">
+        SELECT <include refid="Base_Column_List"/>
+        FROM time_slot
+        ORDER BY sort_order ASC, id ASC
+    </select>
+
+    <!-- 重叠校验辅助：与 [startTime, endTime) 交叉且启用，可排除自身 -->
+    <select id="selectOverlapping" resultType="com.lesson.schedule.entity.TimeSlot">
+        SELECT <include refid="Base_Column_List"/>
+        FROM time_slot
+        WHERE enabled = 1
+          AND start_time &lt; #{endTime}
+          AND end_time &gt; #{startTime}
+        <if test="excludeId != null">
+            AND id != #{excludeId}
+        </if>
+    </select>
+</mapper>

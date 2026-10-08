@@ -1,0 +1,15 @@
+# ============================================================
+# 开发环境（SPRING_PROFILES_ACTIVE=dev）
+# 开启 SQL 日志、debug 级别，便于本地调试。
+# 数据源沿用公共配置；如需连本机 MySQL：
+#   --DB_HOST=localhost --DB_NAME=lesson_db --DB_USER=root --DB_PASSWORD=你的密码
+# ============================================================
+mybatis-plus:
+  configuration:
+    # 调试用：在控制台打印 SQL
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+
+logging:
+  level:
+    com.lesson.schedule: debug
+    root: info

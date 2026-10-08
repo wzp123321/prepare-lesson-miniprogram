@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lesson.schedule.mapper.StatisticsMapper">
+
+    <sql id="Base_Column_List">
+        id, student_id, course_id, slot_id, lesson_date, status, absent_by, absent_reason, make_up_date, closed, remark, create_time, update_time
+    </sql>
+
+    <!-- 指定年/月全部课次（统计聚合用，BE-API-30） -->
+    <select id="selectByMonth" resultType="com.lesson.schedule.entity.Lesson">
+        SELECT <include refid="Base_Column_List"/>
+        FROM lesson
+        WHERE YEAR(lesson_date) = #{year}
+          AND MONTH(lesson_date) = #{month}
+        ORDER BY lesson_date, slot_id
+    </select>
+
+    <!-- 指定年/月未上课明细：status=ABSENT 或 CANCELLED，join student + time_slot（BE-API-31） -->
+    <select id="selectMonthUnscheduled" resultType="com.lesson.schedule.common.vo.UnscheduledVO">
+        SELECT
+            l.lesson_date                AS lessonDate,
+            s.name                       AS studentName,
+            CONCAT(ts.start_time, '-', ts.end_time) AS slot,
+            l.status                     AS status,
+            l.absent_by                  AS absentBy,
+            l.absent_reason              AS absentReason
+        FROM lesson l
+        LEFT JOIN student s ON l.student_id = s.id
+        LEFT JOIN time_slot ts ON l.slot_id = ts.id
+        WHERE YEAR(l.lesson_date) = #{year}
+          AND MONTH(l.lesson_date) = #{month}
+          AND l.status IN ('ABSENT', 'CANCELLED')
+        ORDER BY l.lesson_date, l.slot_id
+    </select>
+
+    <!-- 月收入：Σ(NORMAL+MADEUP 课时 × course.price)，顺延未补/作废不计（BE-API-32，Q2 口径） -->
+    <select id="selectMonthIncome" resultType="java.math.BigDecimal">
+        SELECT COALESCE(SUM(c.price), 0)
+        FROM lesson l
+        JOIN course c ON l.course_id = c.id
+        WHERE YEAR(l.lesson_date) = #{year}
+          AND MONTH(l.lesson_date) = #{month}
+          AND l.status IN ('NORMAL', 'MADEUP')
+    </select>
+</mapper>

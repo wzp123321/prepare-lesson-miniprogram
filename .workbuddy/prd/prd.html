@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<style>
+  :root { --brand: #1f6feb; --ink: #1a1a1a; --muted: #666; --line: #d0d7de; }
+  * { box-sizing: border-box; }
+  body { font-family: "Microsoft YaHei", "SimSun", "PingFang SC", sans-serif; color: var(--ink); line-height: 1.7; margin: 0; padding: 0 8px; }
+  h1 { font-size: 26px; color: var(--brand); border-bottom: 3px solid var(--brand); padding-bottom: 10px; }
+  h2 { font-size: 19px; color: #0b3d91; border-left: 5px solid var(--brand); padding-left: 10px; margin-top: 26px; }
+  h3 { font-size: 16px; color: #134; margin-top: 16px; }
+  p { margin: 6px 0; }
+  .subtitle { color: var(--muted); font-size: 14px; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; font-size: 13.5px; }
+  th, td { border: 1px solid var(--line); padding: 7px 9px; text-align: left; vertical-align: top; }
+  th { background: #eef3fb; color: #0b3d91; font-weight: 600; }
+  ul { margin: 6px 0 6px 20px; padding: 0; }
+  li { margin: 3px 0; }
+  code { background: #f3f4f6; padding: 1px 5px; border-radius: 4px; font-family: Consolas, monospace; }
+  .callout { background: #f0f6ff; border: 1px solid #c8e1ff; border-radius: 6px; padding: 10px 14px; margin: 10px 0; }
+  .tag { display: inline-block; background: var(--brand); color: #fff; font-size: 12px; padding: 1px 8px; border-radius: 10px; }
+</style>
+</head>
+<body>
+
+<h1>备课排课管理系统 · 产品需求文档（PRD）</h1>
+<p class="subtitle">版本 v0.1 ｜ 日期 2026-09-30 ｜ 状态：需求评审稿 ｜ 作者：阿枢（产品/研发）</p>
+
+<div class="callout">
+<b>一句话定位</b>：面向独立小学/初中语文教师的 Web 排课管理工具，用于每月排课、实时查看当月上课情况、管理上课状态（正常 / 顺延 / 已补 / 作废），并自动跟踪「待补课」防止漏补。
+</div>
+
+<h2>1. 文档信息</h2>
+<table>
+  <thead><tr><th>项</th><th>内容</th></tr></thead>
+  <tbody>
+    <tr><td>文档名称</td><td>备课排课管理系统 PRD</td></tr>
+    <tr><td>版本</td><td>v0.1</td></tr>
+    <tr><td>日期</td><td>2026-09-30</td></tr>
+    <tr><td>状态</td><td>需求评审稿（待用户确认后进入开发）</td></tr>
+    <tr><td>适用范围</td><td>管理后台 + 前台（Web 端，移动端后续）</td></tr>
+  </tbody>
+</table>
+
+<h2>2. 项目背景与目标</h2>
+<h3>2.1 背景</h3>
+<p>用户为独立语文教师，面向小学、初中学生，每月进行排课（每天哪些时段给哪个学生上课）。当前用<strong>纸质表格</strong>记录，存在以下痛点：</p>
+<ul>
+  <li>学生请假 / 教师请假后，顺延课程容易忘记补，导致「欠课漏补」；</li>
+  <li>每月实际上课情况无法实时汇总，难以一眼看清「哪些上了、哪些顺延了、什么原因」；</li>
+  <li>纸质记录难以统计收入（实际上课节数 × 课程价格）。</li>
+</ul>
+<h3>2.2 目标</h3>
+<ul>
+  <li>提供一个 Web 系统，集中管理<strong>学生 / 时间段 / 课程 / 排课</strong>；</li>
+  <li><strong>实时</strong>查看每个月的上课情况，并管理每节课的上课状态；</li>
+  <li>自动汇总<strong>待补课</strong>，闭环「顺延 → 安排补课 → 已补」；</li>
+  <li>按月统计上课情况与收入。</li>
+</ul>
+<h3>2.3 成功标准</h3>
+<ul>
+  <li>排课可在当月网格中拖拽完成；</li>
+  <li>前台首页能展示待补课列表（无则不展示）；</li>
+  <li>当月课程表可标记状态并记录顺延原因；</li>
+  <li>月收入 =（正常上课 + 已补）节数 × 学生价格，可按月查询。</li>
+</ul>
+
+<h2>3. 用户与角色</h2>
+<table>
+  <thead><tr><th>角色</th><th>说明</th><th>权限</th></tr></thead>
+  <tbody>
+    <tr><td>独立教师（唯一用户）</td><td>系统的使用者与管理者</td><td>全部功能</td></tr>
+  </tbody>
+</table>
+<p class="subtitle">本期暂不做登录 / 多角色；后续如需分享给学生家长，再加账号体系。</p>
+
+<h2>4. 总体功能架构</h2>
+<p>系统分为<strong>管理后台（录）</strong>与<strong>前台（看）</strong>两大部分，数据同源。</p>
+<table>
+  <thead><tr><th>端</th><th>模块</th><th>核心职责</th></tr></thead>
+  <tbody>
+    <tr><td rowspan="5">管理后台</td><td>学生管理</td><td>维护学生档案</td></tr>
+    <tr><td>时间段管理</td><td>维护上课时段（起止时间、排序）</td></tr>
+    <tr><td>课程管理</td><td>每个学生一门语文课（价格、备注）</td></tr>
+    <tr><td>排课系统</td><td>当月网格拖拽排课、按学生出图、保存时关闭上月顺延</td></tr>
+    <tr><td>字典管理</td><td>维护年级、顺延原因等字典</td></tr>
+    <tr><td rowspan="4">前台</td><td>今日视图</td><td>落地页，今日课程 + 快速标记状态</td></tr>
+    <tr><td>数据总览</td><td>按月查询、历史月未上课表 + 原因、月收入、顺延分类</td></tr>
+    <tr><td>当月课程表</td><td>复用网格，管理每节课状态</td></tr>
+    <tr><td>待补课首页</td><td>展示待补课列表，可「已安排进本月课程」关闭</td></tr>
+  </tbody>
+</table>
+
+<h2>5. 功能详述</h2>
+
+<h3>5.1 学生管理</h3>
+<p><span class="tag">字段</span> 姓名、年级（小/初 + 年级）、电话、家长微信、<strong>家庭地址</strong>、<strong>课程价格</strong>、状态（在读 / 暂停）、专属颜色、备注。</p>
+<ul>
+  <li>列表 + 搜索（按姓名 / 年级）；</li>
+  <li>详情可查看该生所有课程与待补课数；</li>
+  <li><strong>删除保护</strong>：有未结课程 / 未来排课时禁止硬删，仅可置「暂停」归档。</li>
+</ul>
+
+<h3>5.2 时间段管理</h3>
+<p><span class="tag">字段</span> 开始时间、结束时间、排序。</p>
+<ul>
+  <li>增删改 + 拖拽排序；</li>
+  <li><strong>校验不能重叠</strong>（如 08:00–10:00 与 09:00–11:00 冲突须拦截）；</li>
+  <li>作为排课网格的「列」。</li>
+</ul>
+
+<h3>5.3 课程管理</h3>
+<p>因只上语文，课程 = 某个学生的一门语文课。字段：归属学生、科目（固定语文）、<strong>单价（取自学生课程价格）</strong>、备注。</p>
+<ul>
+  <li>列表按学生分组；可停用（学生不学则保留历史）；</li>
+  <li>价格修改仅影响之后排课，不回溯历史。</li>
+</ul>
+
+<h3>5.4 排课系统</h3>
+<p>交互：左侧<strong>学生列表</strong>（可拖拽）；中间<strong>当月网格</strong>——首列为<strong>日期</strong>（当月每一天一行），首行为<strong>时间段</strong>（每列一时段）；中间单元格为可拖拽区域。</p>
+<ul>
+  <li>把学生拖入某单元格 → 生成一条当天该时段的课；<strong>每格仅能拖入 1 名学生</strong>（1 对 1）；</li>
+  <li><strong>排课只能排当月</strong>；历史月后台不可排；</li>
+  <li><strong>保存</strong>时，后端先查询<strong>上月</strong>所有「顺延」课，有则<strong>随保存一并关闭</strong>（视为已安排进本月）；</li>
+  <li>保存后支持<strong>按学生生成当月课表图片</strong>（PNG，用于留存 / 发家长）；</li>
+  <li>网格无课显示空白，<strong>周末不置灰</strong>。</li>
+</ul>
+
+<h3>5.5 请假与顺延</h3>
+<p>在当月课程表（前台）或排课条目上，可标记某节课状态为<strong>顺延</strong>，弹窗必填：</p>
+<ul>
+  <li>请假方：<strong>学生请假 / 老师请假</strong>；</li>
+  <li>顺延原因（自由文本，计入字典「顺延原因」可选预设）。</li>
+</ul>
+<p>标记顺延后，该课进入<strong>待补课</strong>池。</p>
+
+<h3>5.6 补课闭环与待补课</h3>
+<ul>
+  <li><strong>待补课定义</strong>：任意月份中状态 = 顺延且未关闭的课；</li>
+  <li><strong>前台首页</strong>实时查询所有待补课：有则列表展示，<strong>无则不展示</strong>；</li>
+  <li>每条待补课可操作「<strong>已安排进本月课程</strong>」→ 关闭该待补（状态置已补 / 已安排）；实际补课由教师在排课网格把该生拖到某天某时段完成；</li>
+  <li><strong>跨月消除</strong>：上月没上的课，本月（或后续月）排入课程表后，经关闭动作即不再是待补；</li>
+  <li>补课日期可落任意月（存字段），不额外占用网格单元。</li>
+</ul>
+
+<h3>5.7 字典管理</h3>
+<p>维护字典表，本期包含：<strong>年级</strong>、<strong>顺延原因预设</strong>。供下拉与选项复用；后续可扩展备注标签等。</p>
+
+<h3>5.8 数据总览</h3>
+<ul>
+  <li><strong>按月查询</strong>（含历史月）；</li>
+  <li>当月 / 历史月展示：排课总数、已上、顺延（学生请假 / 老师请假各几次）、已补、作废、待补；</li>
+  <li>历史月额外展示<strong>未上课课程表 + 原因</strong>；</li>
+  <li><strong>月收入</strong> =（正常上课 + 已补）节数 × 该生课程价格；顺延未补 / 作废不计入；</li>
+  <li><strong>顺延原因分类统计</strong>：学生请假 vs 老师请假次数。</li>
+</ul>
+
+<h3>5.9 今日视图（落地页）</h3>
+<ul>
+  <li>进入系统默认页；展示<strong>今天</strong>的课程清单；</li>
+  <li>每节课一键标记：未上 → 正常上课 / 顺延（填原因）；</li>
+  <li>顺带提示「今日待补课程」。</li>
+</ul>
+
+<h3>5.10 当月课程表（状态管理）</h3>
+<p><strong>复用</strong>排课同款月网格，每格点开可管理状态：正常上课 / 顺延（填原因）/ 已补 / 作废；顺延标红并显示原因。</p>
+
+<h2>6. 数据模型</h2>
+<h3>6.1 实体关系</h3>
+<pre><code>Student ──&lt; Course（某学生的语文课）──&lt; Lesson（具体某天某节）
+                      ^
+TimeSlot ───────────┘（Lesson 引用 TimeSlot 决定时间）</code></pre>
+
+<h3>6.2 表结构</h3>
+<p><b>student（学生）</b></p>
+<table>
+  <thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead>
+  <tbody>
+    <tr><td>id</td><td>bigint</td><td>主键</td></tr>
+    <tr><td>name</td><td>varchar</td><td>姓名</td></tr>
+    <tr><td>grade</td><td>varchar</td><td>年级（小三 / 初一，字典）</td></tr>
+    <tr><td>phone</td><td>varchar</td><td>电话</td></tr>
+    <tr><td>parent_wechat</td><td>varchar</td><td>家长微信</td></tr>
+    <tr><td>address</td><td>varchar</td><td>家庭地址</td></tr>
+    <tr><td>price</td><td>decimal</td><td>课程价格（每节）</td></tr>
+    <tr><td>status</td><td>tinyint</td><td>1 在读 / 0 暂停</td></tr>
+    <tr><td>color</td><td>varchar</td><td>课表专属色</td></tr>
+    <tr><td>remark</td><td>varchar</td><td>备注</td></tr>
+  </tbody>
+</table>
+
+<p><b>time_slot（时间段）</b></p>
+<table>
+  <thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead>
+  <tbody>
+    <tr><td>id</td><td>bigint</td><td>主键</td></tr>
+    <tr><td>start_time</td><td>time</td><td>开始时间</td></tr>
+    <tr><td>end_time</td><td>time</td><td>结束时间</td></tr>
+    <tr><td>sort_order</td><td>int</td><td>排序</td></tr>
+  </tbody>
+</table>
+
+<p><b>course（课程）</b></p>
+<table>
+  <thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead>
+  <tbody>
+    <tr><td>id</td><td>bigint</td><td>主键</td></tr>
+    <tr><td>student_id</td><td>bigint</td><td>学生</td></tr>
+    <tr><td>subject</td><td>varchar</td><td>科目（固定：语文）</td></tr>
+    <tr><td>price</td><td>decimal</td><td>单价（取自学生）</td></tr>
+    <tr><td>remark</td><td>varchar</td><td>备注</td></tr>
+    <tr><td>enabled</td><td>tinyint</td><td>是否启用</td></tr>
+  </tbody>
+</table>
+
+<p><b>lesson（排课 / 上课记录）</b></p>
+<table>
+  <thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead>
+  <tbody>
+    <tr><td>id</td><td>bigint</td><td>主键</td></tr>
+    <tr><td>student_id</td><td>bigint</td><td>学生</td></tr>
+    <tr><td>course_id</td><td>bigint</td><td>课程</td></tr>
+    <tr><td>time_slot_id</td><td>bigint</td><td>时间段</td></tr>
+    <tr><td>lesson_date</td><td>date</td><td>上课日期（仅当月）</td></tr>
+    <tr><td>status</td><td>varchar</td><td>未上 / 正常上课 / 顺延 / 已补 / 作废</td></tr>
+    <tr><td>absent_by</td><td>varchar</td><td>顺延时：学生 / 老师</td></tr>
+    <tr><td>absent_reason</td><td>varchar</td><td>顺延原因</td></tr>
+    <tr><td>makeup_date</td><td>date</td><td>补课日期（可跨月）</td></tr>
+    <tr><td>makeup_slot_id</td><td>bigint</td><td>补课时段</td></tr>
+    <tr><td>makeup_status</td><td>varchar</td><td>待补 / 已约 / 已补 / 已安排</td></tr>
+    <tr><td>created_at / updated_at</td><td>datetime</td><td>时间戳</td></tr>
+  </tbody>
+</table>
+
+<p><b>dict（字典表）</b></p>
+<table>
+  <thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead>
+  <tbody>
+    <tr><td>id</td><td>bigint</td><td>主键</td></tr>
+    <tr><td>type</td><td>varchar</td><td>字典类型（grade / absence_reason）</td></tr>
+    <tr><td>code</td><td>varchar</td><td>编码</td></tr>
+    <tr><td>label</td><td>varchar</td><td>显示值</td></tr>
+    <tr><td>sort_order</td><td>int</td><td>排序</td></tr>
+  </tbody>
+</table>
+
+<h2>7. 课程状态机</h2>
+<table>
+  <thead><tr><th>状态</th><th>含义</th><th>可达下一状态</th></tr></thead>
+  <tbody>
+    <tr><td>未上</td><td>已排课、尚未发生</td><td>正常上课 / 顺延 / 作废</td></tr>
+    <tr><td>正常上课</td><td>已按时完成</td><td>（终态）</td></tr>
+    <tr><td>顺延</td><td>学生 / 老师请假，需补课</td><td>已补 / 作废（经「已安排进本月课程」关闭）</td></tr>
+    <tr><td>已补</td><td>补课已完成</td><td>（终态）</td></tr>
+    <tr><td>作废</td><td>不补（如长期停课）</td><td>（终态）</td></tr>
+  </tbody>
+</table>
+<p class="subtitle">未来日期显示「未上」；过去日期由教师在今日视图 / 当月课程表标记。顺延 → 安排补课 → 已补 构成补课闭环。</p>
+
+<h2>8. 非功能需求</h2>
+<ul>
+  <li><strong>平台</strong>：Web 优先（桌面拖拽排课）；移动端功能稳定后实现，届时排课改用「点格选学生」；</li>
+  <li><strong>登录</strong>：本期无登录；</li>
+  <li><strong>存储</strong>：后端数据库（MySQL），数据持久化；</li>
+  <li><strong>性能</strong>：单月课表 &lt; 1000 单元格，交互即时；</li>
+  <li><strong>可备份</strong>：数据库定期备份（由部署侧保障）。</li>
+</ul>
+
+<h2>9. 技术架构</h2>
+<table>
+  <thead><tr><th>层</th><th>技术</th><th>说明</th></tr></thead>
+  <tbody>
+    <tr><td>前端</td><td>Vue 3 + Vite + TypeScript</td><td>管理后台 + 前台；排课拖拽网格；按学生出图（html2canvas）</td></tr>
+    <tr><td>后端</td><td>Spring Boot</td><td>REST API；排课保存时关闭上月顺延；按月统计</td></tr>
+    <tr><td>数据库</td><td>MySQL（47.116.35.76）</td><td>学生 / 时间段 / 课程 / 排课 / 字典 等表</td></tr>
+    <tr><td>部署</td><td>后端部署于服务器，前端构建后由后端托管或 Nginx</td><td>Web 访问</td></tr>
+  </tbody>
+</table>
+
+<h2>10. 范围与排期</h2>
+<h3>10.1 MVP（本期）</h3>
+<ul>
+  <li>学生 / 时间段 / 课程 / 字典 管理；</li>
+  <li>排课系统（当月网格拖拽、每格 1 人、保存关上月顺延、按学生出图）；</li>
+  <li>请假顺延（填原因）、补课闭环、待补课首页；</li>
+  <li>今日视图、数据总览（按月、历史月未上课表 + 原因、月收入、顺延分类）、当月课程表状态管理。</li>
+</ul>
+<h3>10.2 后续（本期不做）</h3>
+<ul>
+  <li>移动端适配；</li>
+  <li>登录 / 多角色（分享学生家长）；</li>
+  <li>假期 / 停课日设置；</li>
+  <li>数据备份导出 / 导入、报表打印导出（按学生出图保留）；</li>
+  <li>收费 / 课时包余额。</li>
+</ul>
+
+<h2>11. 风险与待确认</h2>
+<ul>
+  <li>MySQL 连接信息（库名 / 账号 / 密码）由用户后续补充；</li>
+  <li>「已安排进本月课程」关闭待补时，是否需自动在网格生成补课单元 —— 本期采用「仅关闭 + 教师手动拖入补课」；</li>
+  <li>顺延跨多个月（早于上月）的待补，依赖首页手动关闭或对应月份保存时关闭；</li>
+  <li>月收入口径以「正常上课 + 已补」计，顺延未补 / 作废不计，待用户最终确认。</li>
+</ul>
+
+</body>
+</html>
