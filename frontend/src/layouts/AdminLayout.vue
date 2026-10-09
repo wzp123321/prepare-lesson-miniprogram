@@ -54,6 +54,7 @@ const menuTree: MenuNode[] = [
     key: "dashboard",
     title: "教学看板",
     children: [
+      { path: "/dashboard/todo", title: "今日待办" },
       { path: "/dashboard/today", title: "今日视图" },
       { path: "/dashboard/monthly", title: "当月课程表" },
       { path: "/dashboard/records", title: "排课记录" },

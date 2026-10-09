@@ -45,3 +45,19 @@
   AI 动作落库后 `aiAppliedTick + 1`，排课页 `watch` 它重载网格。
 - 聊天 UI 用 Element Plus 打底（el-drawer / el-input / el-button / el-checkbox），
   消息气泡与动作卡片是项目自绘 CSS，没有引专门聊天组件库。
+
+## 今日待办（2026-10-09 交付）
+- **系统落地页已改为 `/dashboard/todo`（今日待办）**，不再是今日视图；兜底路由同步改。
+- 后端 `POST /api/dashboard/today-todo`（BE-API-35，无入参，只读聚合）：四类
+  MARK_TODAY / MAKEUP_TODAY / MAKEUP_OVERDUE / PREP_TODAY，共用 `TodoItemVO` 行结构 + `TodayTodoVO` 外壳。
+- 待办页**只指路不处理**：整行点击跳对应页面并带 `?studentId=`，写操作仍走各模块原接口。
+- 备课页（PrepTodoView）的优化定式：**默认隐藏已上完的课 + 待备/已备分组 + 知识点按大类折叠搜索
+  + 「保存并备下一节」流水线**。这些是用户认可的交互方向，后续改备课页请沿用。
+
+## 构建与冒烟（2026-10-09 实测补充）
+- `mvn package` 在本机离线环境会因 maven-surefire-plugin 插件容器异常失败；
+  改用 `mvn -o spring-boot:run` 起临时实例即可正常跑（`target/classes` 已编译）。
+- 起临时实例用 `SERVER_PORT=18888 spring-boot:run`，**不要动用户的 18899**；测完 taskkill 并按 PID 确认。
+- 冒烟造数据注意 `lesson` 有唯一约束 `uk_lesson_date_slot`（同日期同时段只能一条），
+  批量 INSERT 撞约束会中断整批，需换空闲格子。
+

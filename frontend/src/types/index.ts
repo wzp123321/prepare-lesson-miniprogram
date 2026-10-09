@@ -350,3 +350,35 @@ export interface LessonRecord {
   closed: number | null
   remark: string | null
 }
+
+// ==================== 今日待办（BE-API-35 聚合） ====================
+
+/** 待办分类 */
+export type TodoCategory = 'MARK_TODAY' | 'MAKEUP_TODAY' | 'MAKEUP_OVERDUE' | 'PREP_TODAY'
+
+/** 待办条目（四类共用一种行结构） */
+export interface TodoItem {
+  category: TodoCategory
+  lessonId: number
+  lessonDate: string | null
+  studentId: number | null
+  studentName: string | null
+  grade: string | null
+  slot: string | null
+  status: LessonStatus
+  absentBy: AbsentBy | null
+  absentReason: string | null
+  /** 为什么出现在这里 / 要做什么 */
+  note: string
+}
+
+/** 今日待办聚合（BE-API-35） */
+export interface TodayTodo {
+  today: string
+  markToday: TodoItem[]
+  makeUpToday: TodoItem[]
+  makeUpOverdue: TodoItem[]
+  prepToday: TodoItem[]
+  /** 合计条数 */
+  total: number
+}

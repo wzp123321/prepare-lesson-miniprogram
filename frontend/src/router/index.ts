@@ -7,8 +7,16 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/',
     component: AdminLayout,
-    redirect: '/dashboard/today',
+    // 落地页 = 今日待办：打开系统先看「今天该做什么」，而不是先看课表
+    redirect: '/dashboard/todo',
     children: [
+      // 落地页：今日待办（聚合待标记 / 今日该补 / 明晚该备 / 逾期待补）
+      {
+        path: 'dashboard/todo',
+        name: 'DashboardTodo',
+        component: () => import('@/views/dashboard/TodoView.vue'),
+        meta: { group: 'dashboard', title: '今日待办' }
+      },
       // ===== 管理组（后台录入）=====
       {
         path: 'admin/students',
@@ -99,7 +107,7 @@ const routes: RouteRecordRaw[] = [
     ]
   },
   // 兜底：未知路径重定向到落地页
-  { path: '/:pathMatch(.*)*', redirect: '/dashboard/today' }
+  { path: '/:pathMatch(.*)*', redirect: '/dashboard/todo' }
 ]
 
 const router = createRouter({

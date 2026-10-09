@@ -15,7 +15,7 @@ export default defineConfig({
     },
   },
   server: {
-    port: 5173,
+    port: 18887,
     proxy: {
       "/api": {
         target: BACKEND_TARGET, // 改这里即可切换后端地址
