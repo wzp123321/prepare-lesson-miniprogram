@@ -1,9 +1,11 @@
 package com.lesson.schedule.service;
 
+import com.lesson.schedule.common.dto.PaperGenerateCommitDTO;
 import com.lesson.schedule.common.dto.PaperGenerateDTO;
 import com.lesson.schedule.common.dto.PaperQueryDTO;
 import com.lesson.schedule.common.dto.PaperQuestionsSetDTO;
 import com.lesson.schedule.common.vo.PaperDetailVO;
+import com.lesson.schedule.common.vo.PaperGeneratePreviewVO;
 import com.lesson.schedule.common.vo.PaperVO;
 import com.lesson.schedule.entity.Paper;
 import java.util.List;
@@ -32,6 +34,12 @@ public interface PaperService {
     /** 编排题目（整体覆盖，数组顺序即题号顺序）。 */
     void setQuestions(PaperQuestionsSetDTO dto);
 
-    /** 一键组卷：按知识点随机抽题成卷。 */
+    /** 一键组卷：按知识点随机抽题成卷（直接落库，保留兼容）。 */
     Long generate(PaperGenerateDTO dto);
+
+    /** 组卷试抽：只按条件抽题并返回，不落库；支持按知识点分别设量。 */
+    PaperGeneratePreviewVO generatePreview(PaperGenerateDTO dto);
+
+    /** 组卷落库：按试抽确认后的题目顺序建卷并编排。 */
+    Long generateCommit(PaperGenerateCommitDTO dto);
 }

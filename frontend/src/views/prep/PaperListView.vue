@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // 备课 · 试卷（BE-P-01~08）：列表 / 一键组卷 / 编排题目 / 派生给学生 / 预览
 import { computed, onMounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   fetchPapers,
@@ -10,7 +11,9 @@ import {
   deletePaper,
   clonePaper,
   setPaperQuestions,
-  generatePaper
+  previewGeneratePaper,
+  commitGeneratePaper,
+  type PaperGeneratePreview
 } from '@/api/paper'
 import { fetchQuestions } from '@/api/question'
 import { fetchKps } from '@/api/kp'
@@ -20,6 +23,7 @@ import type { Dict, KnowledgePoint, Paper, PaperDetail, Question, Student } from
 import { errMsg } from '@/utils/error'
 
 const loading = ref(false)
+const router = useRouter()
 const list = ref<Paper[]>([])
 const students = ref<Student[]>([])
 const grades = ref<Dict[]>([])
@@ -27,59 +31,167 @@ const kps = ref<KnowledgePoint[]>([])
 
 const filter = reactive<{ grade?: string; keyword?: string }>({ grade: undefined, keyword: '' })
 
-// ===================== 一键组卷 =====================
+// ===================== 一键组卷（试抽 → 预览换题 → 落库） =====================
 const genVisible = ref(false)
-const generating = ref(false)
+/** 步骤：pick=选题与设量，preview=预览换题 */
+const genStep = ref<'pick' | 'preview'>('pick')
 const gen = reactive({
   grade: '',
   kpIds: [] as number[],
-  countPerKp: 5,
+  /** 每个知识点各自的题量 */
+  counts: {} as Record<number, number>,
+  maxTotal: 0,
   difficulty: 0,
   title: ''
 })
 
+/** 试抽结果 */
+const genPreview = ref<PaperGeneratePreview | null>(null)
+const genPicked = ref<Question[]>([])
+/** 每个位置的"排除"集合：换一题时把旧题放进来，避免再抽到 */
+const genExcluded = ref<Record<number, number[]>>({})
+const genLoading = ref(false)
+const genCommitting = ref(false)
+
 const genKps = computed(() => kps.value.filter((k) => !gen.grade || k.grade === gen.grade || !k.grade))
-const genTotal = computed(() =>
-  genKps.value
-    .filter((k) => gen.kpIds.includes(k.id))
-    .reduce((sum, k) => sum + Math.min(gen.countPerKp, k.questionCount), 0)
+const genSelectedKps = computed(() => genKps.value.filter((k) => gen.kpIds.includes(k.id)))
+/** 期望总题数（含老师设量），最终可能因余量不足变少 */
+const genWantedTotal = computed(() =>
+  genSelectedKps.value.reduce((sum, k) => sum + (gen.counts[k.id] ?? 5), 0)
+)
+/** 抽题明细里"没抽够"的知识点 */
+const genShortPicks = computed(() =>
+  (genPreview.value?.picks || []).filter((p) => p.picked < p.wanted)
 )
 
 function openGenerate(): void {
-  Object.assign(gen, { grade: filter.grade || '', kpIds: [], countPerKp: 5, difficulty: 0, title: '' })
+  Object.assign(gen, { grade: filter.grade || '', kpIds: [], counts: {}, maxTotal: 0, difficulty: 0, title: '' })
+  genStep.value = 'pick'
+  genPreview.value = null
+  genPicked.value = []
+  genExcluded.value = {}
   genVisible.value = true
 }
 
-async function onGenerate(): Promise<void> {
+function toggleGenKp(kpId: number, on: boolean): void {
+  if (on) {
+    if (!gen.kpIds.includes(kpId)) gen.kpIds.push(kpId)
+    if (gen.counts[kpId] == null) gen.counts[kpId] = 5
+  } else {
+    gen.kpIds = gen.kpIds.filter((x) => x !== kpId)
+  }
+}
+
+function setGenCount(kpId: number, v: number | undefined): void {
+  gen.counts[kpId] = v && v > 0 ? v : 1
+}
+
+function genTitle(): string {
+  return (
+    gen.title.trim() ||
+    `${gen.grade ? gen.grade + ' ' : ''}${
+      genSelectedKps.value.map((k) => k.name).slice(0, 2).join('·') || '知识点'
+    } 专项`
+  )
+}
+
+function genParams() {
+  return {
+    title: gen.title.trim() || undefined,
+    grade: gen.grade || undefined,
+    kpIds: gen.kpIds,
+    kpCounts: gen.kpIds.map((id) => ({ kpId: id, count: gen.counts[id] ?? 5 })),
+    maxTotal: gen.maxTotal > 0 ? gen.maxTotal : undefined,
+    difficulty: gen.difficulty || undefined
+  }
+}
+
+/** 试抽（首次进入预览，或点「换一批」重抽） */
+async function doPreview(refresh = false): Promise<void> {
   if (!gen.kpIds.length) {
     ElMessage.warning('请至少勾选一个知识点')
     return
   }
-  generating.value = true
+  genLoading.value = true
   try {
-    const title =
-      gen.title.trim() ||
-      `${gen.grade ? gen.grade + ' ' : ''}${
-        genKps.value
-          .filter((k) => gen.kpIds.includes(k.id))
-          .map((k) => k.name)
-          .slice(0, 2)
-          .join('·') || '知识点'
-      } 专项`
-    const id = await generatePaper({
-      title,
+    const res = await previewGeneratePaper(genParams())
+    genPreview.value = res
+    genPicked.value = res.questions
+    genExcluded.value = {}
+    genStep.value = 'preview'
+    if (!res.questions.length) {
+      ElMessage.warning('这些知识点下没有符合条件的题目')
+    } else if (refresh) {
+      ElMessage.success(`已重新抽取 ${res.total} 题`)
+    }
+  } catch (e) {
+    ElMessage.error(errMsg(e))
+  } finally {
+    genLoading.value = false
+  }
+}
+
+/** 换一题：排除当前的，按该题知识点单独补抽一道 */
+async function swapQuestion(index: number): Promise<void> {
+  const cur = genPicked.value[index]
+  if (!cur) return
+  const kpId = cur.kpId ?? gen.kpIds[0]
+  const excluded = genExcluded.value[index] || []
+  excluded.push(cur.id)
+  genExcluded.value[index] = excluded
+  // 已在本卷中的题（除当前位）都不再抽
+  const usedElsewhere = genPicked.value.filter((_, i) => i !== index).map((q) => q.id)
+  genLoading.value = true
+  try {
+    const res = await previewGeneratePaper({
+      title: gen.title.trim() || undefined,
       grade: gen.grade || undefined,
-      kpIds: gen.kpIds,
-      countPerKp: gen.countPerKp,
+      kpIds: [kpId],
+      kpCounts: [{ kpId, count: usedElsewhere.length + excluded.length + 1 }],
       difficulty: gen.difficulty || undefined
+    })
+    const candidate = res.questions.find(
+      (q) => !usedElsewhere.includes(q.id) && !excluded.includes(q.id)
+    )
+    if (!candidate) {
+      ElMessage.warning('该知识点下已经没有别的题可换了')
+      return
+    }
+    genPicked.value[index] = candidate
+  } catch (e) {
+    ElMessage.error(errMsg(e))
+  } finally {
+    genLoading.value = false
+  }
+}
+
+/** 从预览里移除某题 */
+function dropQuestion(index: number): void {
+  genPicked.value.splice(index, 1)
+}
+
+/** 落库 */
+async function doCommit(): Promise<void> {
+  if (!genPicked.value.length) {
+    ElMessage.warning('卷面为空，至少保留一道题')
+    return
+  }
+  genCommitting.value = true
+  try {
+    const id = await commitGeneratePaper({
+      title: genTitle(),
+      grade: gen.grade || undefined,
+      paperType: 'KP',
+      questionIds: genPicked.value.map((q) => q.id)
     })
     genVisible.value = false
     await loadList()
     openDetailById(id)
+    ElMessage.success(`已生成试卷（${genPicked.value.length} 题）`)
   } catch (e) {
     ElMessage.error(errMsg(e))
   } finally {
-    generating.value = false
+    genCommitting.value = false
   }
 }
 
@@ -122,6 +234,18 @@ const pickIds = ref<number[]>([])
 const pickFilter = reactive<{ grade?: string; kpId?: number; keyword?: string }>({})
 
 const previewVisible = ref(false)
+
+/** 打开独立打印页（新标签，避免丢掉当前列表状态） */
+function openPrint(): void {
+  if (!detail.value) return
+  const url = router.resolve({ name: 'PaperPrint', params: { id: detail.value.id } }).href
+  window.open(url, '_blank')
+}
+
+function printPaper(row: Paper): void {
+  const url = router.resolve({ name: 'PaperPrint', params: { id: row.id } }).href
+  window.open(url, '_blank')
+}
 
 async function openDetailById(id: number): Promise<void> {
   try {
@@ -363,18 +487,25 @@ onMounted(() => {
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="200" fixed="right">
+      <el-table-column label="操作" width="250" fixed="right">
         <template #default="{ row }">
           <el-button link type="primary" @click="openDetailById(row.id)">查看</el-button>
+          <el-button link type="primary" @click="printPaper(row)">打印</el-button>
           <el-button link type="primary" @click="openClone(row)">派给学生</el-button>
           <el-button link type="danger" @click="onDelete(row)">删除</el-button>
         </template>
       </el-table-column>
     </el-table>
 
-    <!-- 一键组卷 -->
-    <el-dialog v-model="genVisible" title="一键组卷" width="620px">
-      <el-form label-width="90px">
+    <!-- 一键组卷：试抽 → 预览换题 → 落库 -->
+    <el-dialog v-model="genVisible" title="一键组卷" width="720px" top="5vh">
+      <el-steps :active="genStep === 'pick' ? 0 : 1" simple style="margin-bottom: 16px">
+        <el-step title="选知识点 · 设题量" />
+        <el-step title="预览卷面 · 逐题替换" />
+      </el-steps>
+
+      <!-- 步骤一：选题与设量 -->
+      <el-form v-if="genStep === 'pick'" label-width="90px">
         <el-form-item label="年级">
           <el-select v-model="gen.grade" placeholder="不限" clearable style="width: 200px">
             <el-option v-for="g in grades" :key="g.id" :label="g.dictValue" :value="g.dictValue" />
@@ -382,28 +513,36 @@ onMounted(() => {
         </el-form-item>
         <el-form-item label="知识点">
           <div class="kp-pick">
-            <label
+            <div
               v-for="k in genKps"
               :key="k.id"
-              class="kp-item"
+              class="kp-row"
               :class="{ disabled: k.questionCount === 0 }"
             >
               <el-checkbox
                 :model-value="gen.kpIds.includes(k.id)"
                 :disabled="k.questionCount === 0"
-                @change="(v: boolean | string | number) => {
-                  if (v) gen.kpIds.push(k.id)
-                  else gen.kpIds = gen.kpIds.filter((x) => x !== k.id)
-                }"
+                @change="(v: boolean | string | number) => toggleGenKp(k.id, !!v)"
               />
               <span class="kp-name">{{ k.name }}</span>
               <span class="kp-count">{{ k.questionCount === 0 ? '暂无题' : k.questionCount + ' 题' }}</span>
-            </label>
+              <el-input-number
+                v-if="gen.kpIds.includes(k.id)"
+                :model-value="gen.counts[k.id] ?? 5"
+                :min="1"
+                :max="Math.max(1, k.questionCount)"
+                size="small"
+                controls-position="right"
+                style="width: 96px"
+                @change="(v: number | undefined) => setGenCount(k.id, v)"
+              />
+            </div>
             <el-empty v-if="!genKps.length" description="没有匹配的知识点" :image-size="60" />
           </div>
         </el-form-item>
-        <el-form-item label="每点抽题">
-          <el-input-number v-model="gen.countPerKp" :min="1" :max="50" />
+        <el-form-item label="整卷上限">
+          <el-input-number v-model="gen.maxTotal" :min="0" :max="200" />
+          <span class="tip" style="margin-left: 8px">0 = 不限</span>
         </el-form-item>
         <el-form-item label="难度">
           <el-select v-model="gen.difficulty" style="width: 160px">
@@ -417,12 +556,64 @@ onMounted(() => {
           <el-input v-model="gen.title" placeholder="留空自动命名" />
         </el-form-item>
         <el-form-item label=" ">
-          <span class="tip">预计成卷 {{ genTotal }} 题（题量不足的知识点按现有题量抽取）</span>
+          <span class="tip">
+            已选 {{ gen.kpIds.length }} 个知识点，期望成卷 {{ genWantedTotal }} 题（题量不足的知识点按现有题量抽取）
+          </span>
         </el-form-item>
       </el-form>
+
+      <!-- 步骤二：预览与换题 -->
+      <template v-else>
+        <div class="preview-bar">
+          <span class="preview-count">
+            共 <b>{{ genPicked.length }}</b> 题
+          </span>
+          <el-button size="small" :loading="genLoading" @click="doPreview(true)">换一批</el-button>
+          <el-button size="small" @click="genStep = 'pick'">返回调整</el-button>
+        </div>
+        <el-alert
+          v-if="genShortPicks.length"
+          type="warning"
+          :closable="false"
+          show-icon
+          style="margin-bottom: 10px"
+        >
+          <template #title>
+            {{ genShortPicks.map((p) => `${p.kpName || '未命名'}：想抽 ${p.wanted} 题，题库仅 ${p.available} 题`).join('；') }}
+          </template>
+        </el-alert>
+        <el-empty v-if="!genPicked.length" description="没有抽到题目，返回上一步调整条件" :image-size="60" />
+        <div v-else class="q-list" v-loading="genLoading">
+          <div v-for="(q, i) in genPicked" :key="`${q.id}-${i}`" class="q-item">
+            <span class="q-no">{{ i + 1 }}</span>
+            <div class="q-body">
+              <div class="q-stem">{{ q.stem }}</div>
+              <div v-if="parseOptions(q.options).length" class="q-opts-preview">
+                <span v-for="(o, oi) in parseOptions(q.options)" :key="oi" class="q-opt">
+                  {{ String.fromCharCode(65 + oi) }}. {{ o }}
+                </span>
+              </div>
+              <div class="q-sub">
+                <span>{{ q.kpName || '未标知识点' }}</span>
+                <span v-if="q.qtype"> · {{ q.qtype }}</span>
+              </div>
+            </div>
+            <div class="q-ops">
+              <el-button link type="primary" @click="swapQuestion(i)">换一题</el-button>
+              <el-button link type="danger" @click="dropQuestion(i)">去掉</el-button>
+            </div>
+          </div>
+        </div>
+      </template>
+
       <template #footer>
         <el-button @click="genVisible = false">取消</el-button>
-        <el-button type="primary" :loading="generating" @click="onGenerate">生成试卷</el-button>
+        <el-button v-if="genStep === 'pick'" type="primary" :loading="genLoading" @click="doPreview(false)">
+          试抽预览
+        </el-button>
+        <el-button v-else type="primary" :loading="genCommitting" @click="doCommit">
+          确认生成试卷
+        </el-button>
       </template>
     </el-dialog>
 
@@ -475,6 +666,7 @@ onMounted(() => {
         <div class="detail-actions">
           <el-button size="small" @click="openPicker">从题库加题</el-button>
           <el-button size="small" @click="previewVisible = true">预览卷面</el-button>
+          <el-button size="small" @click="openPrint">打印</el-button>
           <el-button size="small" :type="detail.status === 'READY' ? 'warning' : 'success'" @click="toggleStatus">
             {{ detail.status === 'READY' ? '退回草稿' : '标记可用' }}
           </el-button>
@@ -536,25 +728,31 @@ onMounted(() => {
       </template>
     </el-dialog>
 
-    <!-- 卷面预览 -->
-    <el-dialog v-model="previewVisible" title="卷面预览" width="720px" top="5vh">
+    <!-- 卷面预览（学生版：无答案、带作答留白；打印走独立整页） -->
+    <el-dialog v-model="previewVisible" title="卷面预览（学生版）" width="760px" top="5vh">
       <div v-if="detail" class="paper-preview">
+        <div class="paper-meta-row">
+          <span>姓名：______</span>
+          <span>班级：______</span>
+          <span>日期：______</span>
+          <span>得分：______</span>
+        </div>
         <h3 class="paper-title">{{ detail.title }}</h3>
         <div v-for="(q, i) in detail.questions" :key="q.id" class="paper-q">
           <div class="paper-stem">{{ i + 1 }}. {{ q.stem }}</div>
           <div v-if="parseOptions(q.options).length" class="paper-opts">
-            <div v-for="(o, oi) in parseOptions(q.options)" :key="oi">{{ String.fromCharCode(65 + oi) }}. {{ o }}</div>
+            <div v-for="(o, oi) in parseOptions(q.options)" :key="oi">
+              {{ String.fromCharCode(65 + oi) }}. {{ o }}
+            </div>
           </div>
-        </div>
-        <div class="paper-answer">
-          <div class="paper-answer-title">答案与解析</div>
-          <div v-for="(q, i) in detail.questions" :key="q.id" class="paper-ans-item">
-            <span class="paper-ans-no">{{ i + 1 }}.</span>
-            <span>{{ q.answer || '（未填答案）' }}</span>
-            <span v-if="q.analysis" class="paper-ans-analysis">解析：{{ q.analysis }}</span>
-          </div>
+          <div class="paper-blank"></div>
         </div>
       </div>
+      <template #footer>
+        <span class="tip" style="margin-right: auto">学生版不含答案，打印后即为可直接下发的卷面</span>
+        <el-button @click="previewVisible = false">关闭</el-button>
+        <el-button type="primary" @click="openPrint">打印 / 导出 PDF</el-button>
+      </template>
     </el-dialog>
 
     <!-- 派生给学生 -->
@@ -592,24 +790,22 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  max-height: 220px;
+  max-height: 260px;
   overflow-y: auto;
   width: 100%;
 }
-.kp-item {
+.kp-row {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 10px;
+  padding: 5px 10px;
   border-radius: 6px;
-  cursor: pointer;
 }
-.kp-item:hover {
+.kp-row:hover {
   background: var(--surface-sunken);
 }
-.kp-item.disabled {
+.kp-row.disabled {
   opacity: 0.5;
-  cursor: not-allowed;
 }
 .kp-name {
   font-size: 13px;
@@ -618,6 +814,28 @@ onMounted(() => {
   margin-left: auto;
   font-size: 12px;
   color: var(--text-muted);
+}
+.preview-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.preview-count {
+  margin-right: auto;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.q-opts-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.q-opt {
+  white-space: nowrap;
 }
 .detail-head {
   display: flex;
@@ -684,6 +902,16 @@ onMounted(() => {
 }
 .paper-preview {
   padding: 0 8px;
+  font-family: 'Songti SC', 'SimSun', 'STSong', serif;
+}
+.paper-meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 24px;
+  font-size: 13px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-base);
+  margin-bottom: 12px;
 }
 .paper-title {
   text-align: center;
@@ -691,7 +919,7 @@ onMounted(() => {
   margin: 0 0 16px;
 }
 .paper-q {
-  margin-bottom: 12px;
+  margin-bottom: 14px;
 }
 .paper-stem {
   font-size: 13px;
@@ -702,26 +930,10 @@ onMounted(() => {
   font-size: 13px;
   color: var(--text-muted);
 }
-.paper-answer {
-  margin-top: 20px;
-  border-top: 1px dashed var(--border-base);
-  padding-top: 12px;
-}
-.paper-answer-title {
-  font-weight: 600;
-  margin-bottom: 8px;
-}
-.paper-ans-item {
-  font-size: 13px;
-  margin-bottom: 6px;
-}
-.paper-ans-no {
-  color: var(--text-muted);
-  margin-right: 4px;
-}
-.paper-ans-analysis {
-  margin-left: 8px;
-  color: var(--text-muted);
+.paper-blank {
+  margin: 6px 0 0 16px;
+  height: 22px;
+  border-bottom: 1px solid var(--border-subtle);
 }
 .tip {
   font-size: 12px;

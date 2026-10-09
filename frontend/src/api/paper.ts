@@ -1,6 +1,6 @@
-// 试卷 —— BE-P-01~08（/api/papers/*，统一 POST + Result 包装）
+// 试卷 —— BE-P-01~10（/api/papers/*，统一 POST + Result 包装）
 import request from '@/utils/request'
-import type { Paper, PaperDetail, PaperType } from '@/types'
+import type { Paper, PaperDetail, PaperType, Question } from '@/types'
 
 export interface PaperQuery {
   grade?: string
@@ -44,7 +44,7 @@ export function setPaperQuestions(data: { paperId: number; questionIds: number[]
   return request.post<void, void>('/papers/questions/set', data)
 }
 
-// BE-P-08 一键组卷（按知识点随机抽题）
+// BE-P-08 一键组卷（按知识点随机抽题，直接落库）
 export function generatePaper(data: {
   title?: string
   grade?: string
@@ -55,4 +55,52 @@ export function generatePaper(data: {
   studentId?: number
 }): Promise<number> {
   return request.post<number, number>('/papers/generate', data)
+}
+
+/** 组卷入参：题量可按知识点分别设量，也可统一 countPerKp */
+export interface PaperGenerateParams {
+  title?: string
+  grade?: string
+  kpIds: number[]
+  /** 按知识点分别设量，优先级高于 countPerKp */
+  kpCounts?: { kpId: number; count: number }[]
+  countPerKp?: number
+  /** 整卷题量上限，空 = 不限 */
+  maxTotal?: number
+  difficulty?: number
+  paperType?: PaperType
+  studentId?: number
+}
+
+/** 组卷试抽结果：题目 + 每个知识点的抽题明细 */
+export interface PaperGeneratePreview {
+  questions: Question[]
+  total: number
+  picks: {
+    kpId: number
+    kpName: string | null
+    /** 期望抽几题 */
+    wanted: number
+    /** 题库符合条件的总量 */
+    available: number
+    /** 实际抽到几题 */
+    picked: number
+  }[]
+}
+
+// BE-P-09 组卷试抽（不落库，供预览与逐题替换）
+export function previewGeneratePaper(data: PaperGenerateParams): Promise<PaperGeneratePreview> {
+  return request.post<PaperGeneratePreview, PaperGeneratePreview>('/papers/generate/preview', data)
+}
+
+// BE-P-10 组卷落库（按确认后的题目顺序建卷）
+export function commitGeneratePaper(data: {
+  title?: string
+  grade?: string
+  paperType?: PaperType
+  studentId?: number
+  remark?: string
+  questionIds: number[]
+}): Promise<number> {
+  return request.post<number, number>('/papers/generate/commit', data)
 }

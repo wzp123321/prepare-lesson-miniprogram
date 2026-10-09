@@ -3,10 +3,12 @@ package com.lesson.schedule.controller;
 import com.lesson.schedule.common.Result;
 import com.lesson.schedule.common.dto.IdDTO;
 import com.lesson.schedule.common.dto.PaperCloneDTO;
+import com.lesson.schedule.common.dto.PaperGenerateCommitDTO;
 import com.lesson.schedule.common.dto.PaperGenerateDTO;
 import com.lesson.schedule.common.dto.PaperQueryDTO;
 import com.lesson.schedule.common.dto.PaperQuestionsSetDTO;
 import com.lesson.schedule.common.vo.PaperDetailVO;
+import com.lesson.schedule.common.vo.PaperGeneratePreviewVO;
 import com.lesson.schedule.common.vo.PaperVO;
 import com.lesson.schedule.entity.Paper;
 import com.lesson.schedule.service.PaperService;
@@ -73,9 +75,25 @@ public class PaperController {
         return Result.success();
     }
 
-    /** BE-P-08 一键组卷。入参：title / grade / kpIds / countPerKp / difficulty。 */
+    /** BE-P-08 一键组卷（直接落库）。入参：title / grade / kpIds / countPerKp / difficulty。 */
     @PostMapping("/generate")
     public Result<Long> generate(@RequestBody PaperGenerateDTO dto) {
         return Result.success(paperService.generate(dto));
+    }
+
+    /**
+     * BE-P-09 组卷试抽（不落库）。
+     * 入参：title / grade / kpIds / kpCounts（按点设量）/ countPerKp / maxTotal / difficulty。
+     * 返回题目列表 + 每个知识点的抽题明细，供老师预览、换题后再落库。
+     */
+    @PostMapping("/generate/preview")
+    public Result<PaperGeneratePreviewVO> generatePreview(@RequestBody PaperGenerateDTO dto) {
+        return Result.success(paperService.generatePreview(dto));
+    }
+
+    /** BE-P-10 组卷落库。入参：title / grade / paperType / studentId / questionIds（顺序即题号）。 */
+    @PostMapping("/generate/commit")
+    public Result<Long> generateCommit(@RequestBody PaperGenerateCommitDTO dto) {
+        return Result.success(paperService.generateCommit(dto));
     }
 }

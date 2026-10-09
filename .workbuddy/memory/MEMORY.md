@@ -46,6 +46,25 @@
 - 聊天 UI 用 Element Plus 打底（el-drawer / el-input / el-button / el-checkbox），
   消息气泡与动作卡片是项目自绘 CSS，没有引专门聊天组件库。
 
+## 题库 / 试卷 / 打印（2026-10-09 交付）
+- **组卷是两步，不要再一步落库**：`POST /api/papers/generate/preview`（只试抽不落库，
+  返回 `PaperGeneratePreviewVO{questions,total,picks[]}`）→ 老师预览/换题 → `POST /api/papers/generate/commit`
+  （按 `questionIds` 建卷+编排一步完成）。旧的 `POST /generate` 保留但前端已不用。
+- `PaperGenerateDTO` 的题量给法：`kpCounts:[{kpId,count}]` **优先**，`countPerKp` 是兼容兜底；
+  `maxTotal` 是整卷上限。**按点设量**是用户认的交互，别再退回"一个数管所有知识点"。
+- `picks` 里的 `wanted/available/picked` 要让前端**如实显示题量不足**（"想抽 10 题、题库仅 3 题"），
+  不要静默少给。
+- **打印走独立整页**：`/print/paper/:id` → `PaperPrintView.vue`，**挂在 AdminLayout 之外**（顶层路由，无侧栏）。
+  浏览器打印 + `@media print` + `@page A4 portrait`，不引任何打印库。
+- **卷面渲染约定**：按题型分大题（顺序由 `frontend/src/constants/question.ts` 的 `QTYPE_ORDER` 决定）
+  →「一、选择题（共 N 小题）」；`.big-q`/`.q` 必须带 `break-inside: avoid`。
+- **只做学生版**：打印/预览**不渲染 answer/analysis**（后端会返回，前端有意不画）；
+  作答留白按题型区分（选择/填空/判断 1 行、阅读/古诗文 3 行、写作空白框）。
+- 打开打印页一律 `router.resolve({name:'PaperPrint',params:{id}})` + `window.open`（新标签，不丢列表状态）。
+- 录题抽屉：**`kpId` 不必填**（留空可存，但组卷抽不到）；知识点下拉按 `category` 分组（el-option-group）；
+  判断题选项固定「正确/错误」；答案支持**点字母**多选（拼成 "AB"）且保留手输；题干输入触发查重提示。
+- `paper_question` 是**纯引用表**：改一道题会影响所有引用它的卷（只有 `clone` 会复制题目行）。UI 上要给警告。
+
 ## 今日待办（2026-10-09 交付）
 - **系统落地页已改为 `/dashboard/todo`（今日待办）**，不再是今日视图；兜底路由同步改。
 - 后端 `POST /api/dashboard/today-todo`（BE-API-35，无入参，只读聚合）：四类
@@ -60,4 +79,8 @@
 - 起临时实例用 `SERVER_PORT=18888 spring-boot:run`，**不要动用户的 18899**；测完 taskkill 并按 PID 确认。
 - 冒烟造数据注意 `lesson` 有唯一约束 `uk_lesson_date_slot`（同日期同时段只能一条），
   批量 INSERT 撞约束会中断整批，需换空闲格子。
+- **前端 dist 重建**：就地覆盖 `dist` 会反复构建失败/超时，先 `mv dist dist-old-$(date +%H%M%S)` 再 build。
+- **`vite preview` 在沙箱里验不了**：只绑 `[::1]`，curl 直连 loopback 被拦（exit 27）。
+  要验页面行为，改为验**数据源**（对应 REST 接口的响应字段），或起 `SERVER_PORT=18888` 的真后端。
+- 前端改动后的标准三连：`npx vue-tsc --noEmit` → `npx vite build` → 抽查产物里关键 CSS 规则是否存在。
 

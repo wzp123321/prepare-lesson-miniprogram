@@ -106,6 +106,13 @@ const routes: RouteRecordRaw[] = [
       }
     ]
   },
+  // 打印视图：独立整页（无侧栏 / 无导航），Ctrl+P 直接出纸
+  {
+    path: '/print/paper/:id',
+    name: 'PaperPrint',
+    component: () => import('@/views/prep/PaperPrintView.vue'),
+    meta: { title: '打印试卷' }
+  },
   // 兜底：未知路径重定向到落地页
   { path: '/:pathMatch(.*)*', redirect: '/dashboard/todo' }
 ]
@@ -113,6 +120,11 @@ const routes: RouteRecordRaw[] = [
 const router = createRouter({
   history: createWebHistory(),
   routes
+})
+
+// 打印页自带「隐藏外壳」语义：切页时移除 body 上的背景干扰
+router.afterEach((to) => {
+  document.title = to.meta.title ? `${to.meta.title} · 备课排课` : '备课排课'
 })
 
 export default router

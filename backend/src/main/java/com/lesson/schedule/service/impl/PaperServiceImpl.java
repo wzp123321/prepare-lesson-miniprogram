@@ -2,10 +2,13 @@ package com.lesson.schedule.service.impl;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.lesson.schedule.common.BusinessException;
+import com.lesson.schedule.common.dto.KpCountDTO;
+import com.lesson.schedule.common.dto.PaperGenerateCommitDTO;
 import com.lesson.schedule.common.dto.PaperGenerateDTO;
 import com.lesson.schedule.common.dto.PaperQueryDTO;
 import com.lesson.schedule.common.dto.PaperQuestionsSetDTO;
 import com.lesson.schedule.common.vo.PaperDetailVO;
+import com.lesson.schedule.common.vo.PaperGeneratePreviewVO;
 import com.lesson.schedule.common.vo.PaperVO;
 import com.lesson.schedule.common.vo.QuestionVO;
 import com.lesson.schedule.entity.KnowledgePoint;
@@ -272,58 +275,210 @@ public class PaperServiceImpl implements PaperService {
     @Override
     @Transactional
     public Long generate(PaperGenerateDTO dto) {
-        if (dto == null || dto.getKpIds() == null || dto.getKpIds().isEmpty()) {
-            throw new BusinessException(400, "请至少选择一个知识点");
-        }
-        int per = dto.getCountPerKp() == null || dto.getCountPerKp() <= 0 ? 5 : dto.getCountPerKp();
-        String title = dto.getTitle();
-        if (title == null || title.isBlank()) {
-            title = (dto.getGrade() == null || dto.getGrade().isBlank() ? "" : dto.getGrade() + " ")
-                    + "知识点专项练习";
-        }
+        assertGenerateParam(dto);
         Paper paper = new Paper();
-        paper.setTitle(title);
+        paper.setTitle(resolveTitle(dto));
         paper.setGrade(dto.getGrade());
-        paper.setPaperType(dto.getPaperType() == null || dto.getPaperType().isBlank() ? "KP" : dto.getPaperType());
+        paper.setPaperType(resolvePaperType(dto));
         paper.setStudentId(dto.getStudentId());
         paper.setStatus("DRAFT");
         paperMapper.insert(paper);
 
+        List<Long> picked = pickQuestionIds(dto);
         int order = 0;
-        List<Long> seen = new ArrayList<>();
-        for (Long kpId : dto.getKpIds()) {
-            if (kpId == null) {
+        for (Long qid : picked) {
+            PaperQuestion l = new PaperQuestion();
+            l.setPaperId(paper.getId());
+            l.setQuestionId(qid);
+            l.setSortOrder(++order);
+            paperQuestionMapper.insert(l);
+        }
+        return paper.getId();
+    }
+
+    @Override
+    public PaperGeneratePreviewVO generatePreview(PaperGenerateDTO dto) {
+        assertGenerateParam(dto);
+        List<KpCountDTO> wants = normalizeCounts(dto);
+        int maxTotal = dto.getMaxTotal() == null || dto.getMaxTotal() <= 0 ? Integer.MAX_VALUE : dto.getMaxTotal();
+
+        List<Long> ordered = new ArrayList<>();
+        Set<Long> seen = new HashSet<>();
+        List<PaperGeneratePreviewVO.KpPickVO> picks = new ArrayList<>();
+        Map<Long, String> kpNames = kpNameMap(wants);
+
+        for (KpCountDTO want : wants) {
+            PaperGeneratePreviewVO.KpPickVO pick = new PaperGeneratePreviewVO.KpPickVO();
+            pick.setKpId(want.getKpId());
+            pick.setKpName(kpNames.get(want.getKpId()));
+            pick.setWanted(want.getCount());
+
+            List<Question> pool = selectPool(dto, want.getKpId());
+            pick.setAvailable(pool.size());
+            if (pool.isEmpty()) {
+                pick.setPicked(0);
+                picks.add(pick);
                 continue;
             }
-            var qw = Wrappers.<Question>lambdaQuery()
-                    .eq(Question::getKpId, kpId)
-                    .isNull(Question::getStudentId);
-            if (dto.getGrade() != null && !dto.getGrade().isBlank()) {
-                qw.eq(Question::getGrade, dto.getGrade());
+            Collections.shuffle(pool);
+            int picked = 0;
+            for (Question q : pool) {
+                if (picked >= want.getCount()) {
+                    break;
+                }
+                if (ordered.size() >= maxTotal) {
+                    break;
+                }
+                if (!seen.add(q.getId())) {
+                    continue;
+                }
+                ordered.add(q.getId());
+                picked++;
             }
-            if (dto.getDifficulty() != null && dto.getDifficulty() > 0) {
-                qw.eq(Question::getDifficulty, dto.getDifficulty());
+            pick.setPicked(picked);
+            picks.add(pick);
+        }
+
+        PaperGeneratePreviewVO vo = new PaperGeneratePreviewVO();
+        vo.setQuestions(toQuestionVOs(ordered));
+        vo.setTotal(ordered.size());
+        vo.setPicks(picks);
+        return vo;
+    }
+
+    @Override
+    @Transactional
+    public Long generateCommit(PaperGenerateCommitDTO dto) {
+        if (dto == null || dto.getQuestionIds() == null || dto.getQuestionIds().isEmpty()) {
+            throw new BusinessException(400, "组卷至少需要一道题");
+        }
+        Paper paper = new Paper();
+        paper.setTitle(dto.getTitle() == null || dto.getTitle().isBlank()
+                ? (dto.getGrade() == null || dto.getGrade().isBlank() ? "" : dto.getGrade() + " ") + "知识点专项练习"
+                : dto.getTitle());
+        paper.setGrade(dto.getGrade());
+        paper.setPaperType(dto.getPaperType() == null || dto.getPaperType().isBlank() ? "KP" : dto.getPaperType());
+        paper.setStudentId(dto.getStudentId());
+        paper.setRemark(dto.getRemark());
+        paper.setStatus("DRAFT");
+        paperMapper.insert(paper);
+
+        int order = 0;
+        Set<Long> seen = new HashSet<>();
+        for (Long qid : dto.getQuestionIds()) {
+            if (qid == null || !seen.add(qid)) {
+                continue;
             }
-            List<Question> pool = questionMapper.selectList(qw);
+            if (questionMapper.selectById(qid) == null) {
+                continue;
+            }
+            PaperQuestion l = new PaperQuestion();
+            l.setPaperId(paper.getId());
+            l.setQuestionId(qid);
+            l.setSortOrder(++order);
+            paperQuestionMapper.insert(l);
+        }
+        if (order == 0) {
+            throw new BusinessException(400, "所选题目均已失效，请重新组卷");
+        }
+        return paper.getId();
+    }
+
+    private void assertGenerateParam(PaperGenerateDTO dto) {
+        if (dto == null || dto.getKpIds() == null || dto.getKpIds().isEmpty()) {
+            throw new BusinessException(400, "请至少选择一个知识点");
+        }
+    }
+
+    /** 补齐题量：kpCounts 优先，否则用 countPerKp 平摊；过滤掉非正数量。 */
+    private List<KpCountDTO> normalizeCounts(PaperGenerateDTO dto) {
+        int fallback = dto.getCountPerKp() == null || dto.getCountPerKp() <= 0 ? 5 : dto.getCountPerKp();
+        Map<Long, Integer> perKp = new HashMap<>();
+        if (dto.getKpCounts() != null) {
+            for (KpCountDTO kc : dto.getKpCounts()) {
+                if (kc != null && kc.getKpId() != null && kc.getCount() != null && kc.getCount() > 0) {
+                    perKp.put(kc.getKpId(), kc.getCount());
+                }
+            }
+        }
+        List<KpCountDTO> result = new ArrayList<>();
+        Set<Long> used = new HashSet<>();
+        for (Long kpId : dto.getKpIds()) {
+            if (kpId == null || !used.add(kpId)) {
+                continue;
+            }
+            KpCountDTO kc = new KpCountDTO();
+            kc.setKpId(kpId);
+            kc.setCount(perKp.containsKey(kpId) ? perKp.get(kpId) : fallback);
+            result.add(kc);
+        }
+        return result;
+    }
+
+    /** 按知识点查候选池（通用题 + 年级/难度过滤）。 */
+    private List<Question> selectPool(PaperGenerateDTO dto, Long kpId) {
+        var qw = Wrappers.<Question>lambdaQuery()
+                .eq(Question::getKpId, kpId)
+                .isNull(Question::getStudentId);
+        if (dto.getGrade() != null && !dto.getGrade().isBlank()) {
+            qw.eq(Question::getGrade, dto.getGrade());
+        }
+        if (dto.getDifficulty() != null && dto.getDifficulty() > 0) {
+            qw.eq(Question::getDifficulty, dto.getDifficulty());
+        }
+        return questionMapper.selectList(qw);
+    }
+
+    /** 试抽共用的取题逻辑：按点设量、去重、受 maxTotal 约束，返回题号顺序。 */
+    private List<Long> pickQuestionIds(PaperGenerateDTO dto) {
+        int maxTotal = dto.getMaxTotal() == null || dto.getMaxTotal() <= 0 ? Integer.MAX_VALUE : dto.getMaxTotal();
+        List<Long> ordered = new ArrayList<>();
+        Set<Long> seen = new HashSet<>();
+        for (KpCountDTO want : normalizeCounts(dto)) {
+            List<Question> pool = selectPool(dto, want.getKpId());
             if (pool.isEmpty()) {
                 continue;
             }
             Collections.shuffle(pool);
-            int n = Math.min(per, pool.size());
-            for (int i = 0; i < n; i++) {
-                Long qid = pool.get(i).getId();
-                if (seen.contains(qid)) {
-                    continue;
+            int picked = 0;
+            for (Question q : pool) {
+                if (picked >= want.getCount() || ordered.size() >= maxTotal) {
+                    break;
                 }
-                seen.add(qid);
-                PaperQuestion l = new PaperQuestion();
-                l.setPaperId(paper.getId());
-                l.setQuestionId(qid);
-                l.setSortOrder(++order);
-                paperQuestionMapper.insert(l);
+                if (seen.add(q.getId())) {
+                    ordered.add(q.getId());
+                    picked++;
+                }
             }
         }
-        return paper.getId();
+        return ordered;
+    }
+
+    private String resolveTitle(PaperGenerateDTO dto) {
+        if (dto.getTitle() != null && !dto.getTitle().isBlank()) {
+            return dto.getTitle();
+        }
+        return (dto.getGrade() == null || dto.getGrade().isBlank() ? "" : dto.getGrade() + " ") + "知识点专项练习";
+    }
+
+    private String resolvePaperType(PaperGenerateDTO dto) {
+        return dto.getPaperType() == null || dto.getPaperType().isBlank() ? "KP" : dto.getPaperType();
+    }
+
+    private Map<Long, String> kpNameMap(List<KpCountDTO> wants) {
+        Set<Long> ids = new HashSet<>();
+        for (KpCountDTO kc : wants) {
+            if (kc.getKpId() != null) {
+                ids.add(kc.getKpId());
+            }
+        }
+        Map<Long, String> m = new HashMap<>();
+        if (!ids.isEmpty()) {
+            for (KnowledgePoint kp : knowledgePointMapper.selectBatchIds(ids)) {
+                m.put(kp.getId(), kp.getName());
+            }
+        }
+        return m;
     }
 
     private void fillBasic(PaperVO vo, Paper p) {
