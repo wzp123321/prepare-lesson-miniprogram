@@ -7,6 +7,7 @@ import com.lesson.schedule.common.dto.PaperGenerateCommitDTO;
 import com.lesson.schedule.common.dto.PaperGenerateDTO;
 import com.lesson.schedule.common.dto.PaperQueryDTO;
 import com.lesson.schedule.common.dto.PaperQuestionsSetDTO;
+import com.lesson.schedule.common.dto.PaperReuseDTO;
 import com.lesson.schedule.common.vo.PaperDetailVO;
 import com.lesson.schedule.common.vo.PaperGeneratePreviewVO;
 import com.lesson.schedule.common.vo.PaperVO;
@@ -66,6 +67,16 @@ public class PaperController {
     @PostMapping("/clone")
     public Result<Long> clone(@RequestBody PaperCloneDTO dto) {
         return Result.success(paperService.clone(dto.getId(), dto.getStudentId()));
+    }
+
+    /**
+     * BE-P-11 一键复用：以蓝本卷生成一份新的可编辑卷。
+     * 入参：sourceId（蓝本卷）/ title（可选新卷名）/ studentId（可选新归属，不传沿用蓝本）。
+     * 复制编排与卷内编辑快照，不克隆题库行；原卷不动。
+     */
+    @PostMapping("/reuse")
+    public Result<Long> reuse(@RequestBody PaperReuseDTO dto) {
+        return Result.success(paperService.reuse(dto));
     }
 
     /** BE-P-07 编排题目（整体覆盖）。入参：paperId / questionIds（顺序即题号）。 */

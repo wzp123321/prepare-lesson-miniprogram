@@ -23,4 +23,11 @@ public class QuestionVO {
     private String source;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;
+
+    /**
+     * 是否「卷内已编辑」——仅试卷详情返回时可能为 true。
+     * true 表示当前展示的题干/选项/答案等来自试卷快照，而非题库原题。
+     * 题库列表接口恒为 null。
+     */
+    private Boolean edited;
 }

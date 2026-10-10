@@ -5,6 +5,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { fetchPaperDetail } from '@/api/paper'
 import { errMsg } from '@/utils/error'
+import { qtypeWeight } from '@/utils/qtype'
 import type { PaperDetail, Question } from '@/types'
 
 const route = useRoute()
@@ -13,9 +14,6 @@ const router = useRouter()
 const loading = ref(false)
 const paper = ref<PaperDetail | null>(null)
 const error = ref('')
-
-/** 卷面大题顺序：题型归组，顺序按项目统一题型表 */
-const QTYPE_ORDER = ['选择', '填空', '判断', '阅读', '古诗文', '写作', '其他']
 
 interface BigQuestion {
   qtype: string
@@ -36,11 +34,8 @@ const groups = computed<BigQuestion[]>(() => {
     if (!map.has(key)) map.set(key, [])
     map.get(key)!.push(it)
   }
-  const keys = [...map.keys()].sort((a, b) => {
-    const ia = QTYPE_ORDER.indexOf(a)
-    const ib = QTYPE_ORDER.indexOf(b)
-    return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib)
-  })
+  // 大题顺序与制卷台、右侧构成统计共用同一张题型表
+  const keys = [...map.keys()].sort((a, b) => qtypeWeight(a) - qtypeWeight(b))
   return keys.map((k) => ({
     qtype: k,
     items: map.get(k)!,

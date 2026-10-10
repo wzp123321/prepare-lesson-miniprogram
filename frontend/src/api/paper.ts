@@ -39,8 +39,33 @@ export function clonePaper(data: { id: number; studentId?: number }): Promise<nu
   return request.post<number, number>('/papers/clone', data)
 }
 
-// BE-P-07 编排题目（整体覆盖，数组顺序即题号顺序）
-export function setPaperQuestions(data: { paperId: number; questionIds: number[] }): Promise<void> {
+// BE-P-11 一键复用：以蓝本卷生成一份新的可编辑卷（复制编排+卷内快照，不克隆题库行）
+export function reusePaper(data: {
+  sourceId: number
+  title?: string
+  studentId?: number
+}): Promise<number> {
+  return request.post<number, number>('/papers/reuse', data)
+}
+
+/** 卷面编排项：edited=true 时 override 里的内容会写入试卷内容覆盖表（改卷不动题库） */
+export interface PaperQuestionItem {
+  questionId: number
+  edited?: boolean
+  /** 卷内编辑内容（仅 edited=true 时有意义） */
+  qtype?: string
+  stem?: string
+  options?: string | null
+  answer?: string | null
+  analysis?: string | null
+  difficulty?: number
+}
+
+// BE-P-07 编排题目（整体覆盖，数组顺序即题号顺序；items 可携带卷内编辑内容）
+export function setPaperQuestions(data: {
+  paperId: number
+  items: PaperQuestionItem[]
+}): Promise<void> {
   return request.post<void, void>('/papers/questions/set', data)
 }
 

@@ -5,21 +5,19 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   fetchPapers,
-  fetchPaperDetail,
   createPaper,
   updatePaper,
   deletePaper,
   clonePaper,
-  setPaperQuestions,
+  reusePaper,
   previewGeneratePaper,
   commitGeneratePaper,
   type PaperGeneratePreview
 } from '@/api/paper'
-import { fetchQuestions } from '@/api/question'
 import { fetchKps } from '@/api/kp'
 import { fetchStudents } from '@/api/student'
 import { fetchDicts } from '@/api/dict'
-import type { Dict, KnowledgePoint, Paper, PaperDetail, Question, Student } from '@/types'
+import type { Dict, KnowledgePoint, Paper, Question, Student } from '@/types'
 import { errMsg } from '@/utils/error'
 
 const loading = ref(false)
@@ -186,7 +184,7 @@ async function doCommit(): Promise<void> {
     })
     genVisible.value = false
     await loadList()
-    openDetailById(id)
+    openCompose(id)
     ElMessage.success(`已生成试卷（${genPicked.value.length} 题）`)
   } catch (e) {
     ElMessage.error(errMsg(e))
@@ -218,126 +216,29 @@ async function onCreate(): Promise<void> {
     })
     newVisible.value = false
     await loadList()
-    openDetailById(id)
+    openCompose(id)
   } catch (e) {
     ElMessage.error(errMsg(e))
   }
 }
 
-// ===================== 卷详情 / 编排 =====================
-const detailVisible = ref(false)
-const detail = ref<PaperDetail | null>(null)
-const qPickerVisible = ref(false)
-const pickLoading = ref(false)
-const pickList = ref<Question[]>([])
-const pickIds = ref<number[]>([])
-const pickFilter = reactive<{ grade?: string; kpId?: number; keyword?: string }>({})
-
-const previewVisible = ref(false)
-
-/** 打开独立打印页（新标签，避免丢掉当前列表状态） */
-function openPrint(): void {
-  if (!detail.value) return
-  const url = router.resolve({ name: 'PaperPrint', params: { id: detail.value.id } }).href
-  window.open(url, '_blank')
+// ===================== 制卷台（独立整页） =====================
+/** 打开制卷台：三栏编排（左题库 / 中卷面 / 右组卷栏）都在新页面里 */
+function openCompose(id: number): void {
+  router.push({ name: 'PaperCompose', params: { id } })
 }
 
+/** 打开独立打印页（新标签，避免丢掉当前列表状态） */
 function printPaper(row: Paper): void {
   const url = router.resolve({ name: 'PaperPrint', params: { id: row.id } }).href
   window.open(url, '_blank')
 }
 
-async function openDetailById(id: number): Promise<void> {
+async function toggleStatus(row: Paper): Promise<void> {
+  const next = row.status === 'READY' ? 'DRAFT' : 'READY'
   try {
-    detail.value = await fetchPaperDetail(id)
-    detailVisible.value = true
-  } catch (e) {
-    ElMessage.error(errMsg(e))
-  }
-}
-
-/** 保存编排（整体覆盖，数组顺序即题号） */
-async function saveOrder(): Promise<void> {
-  if (!detail.value) return
-  try {
-    await setPaperQuestions({
-      paperId: detail.value.id,
-      questionIds: detail.value.questions.map((q) => q.id)
-    })
-    detail.value.questionCount = detail.value.questions.length
-  } catch (e) {
-    ElMessage.error(errMsg(e))
-  }
-}
-
-async function removeQuestion(index: number): Promise<void> {
-  if (!detail.value) return
-  detail.value.questions.splice(index, 1)
-  await saveOrder()
-  loadList()
-}
-
-async function moveQuestion(index: number, dir: -1 | 1): Promise<void> {
-  if (!detail.value) return
-  const target = index + dir
-  const arr = detail.value.questions
-  if (target < 0 || target >= arr.length) return
-  const tmp = arr[index]
-  arr[index] = arr[target]
-  arr[target] = tmp
-  await saveOrder()
-}
-
-async function openPicker(): Promise<void> {
-  if (!detail.value) return
-  pickIds.value = []
-  Object.assign(pickFilter, { grade: detail.value.grade || undefined, kpId: undefined, keyword: '' })
-  pickPickerList()
-  qPickerVisible.value = true
-}
-
-async function pickPickerList(): Promise<void> {
-  pickLoading.value = true
-  try {
-    const res = await fetchQuestions({ ...pickFilter, page: 1, size: 100 })
-    pickList.value = res.list
-  } catch (e) {
-    ElMessage.error(errMsg(e))
-  } finally {
-    pickLoading.value = false
-  }
-}
-
-function alreadyIn(qid: number): boolean {
-  return !!detail.value?.questions.some((q) => q.id === qid)
-}
-
-async function confirmPick(): Promise<void> {
-  if (!detail.value || !pickIds.value.length) {
-    qPickerVisible.value = false
-    return
-  }
-  const exist = detail.value.questions.map((q) => q.id)
-  const added: Question[] = []
-  for (const id of pickIds.value) {
-    if (exist.includes(id)) continue
-    const q = pickList.value.find((x) => x.id === id)
-    if (q) added.push(q)
-  }
-  detail.value.questions = [...detail.value.questions, ...added]
-  qPickerVisible.value = false
-  await saveOrder()
-  loadList()
-  ElMessage.success(`已加入 ${added.length} 题`)
-}
-
-async function toggleStatus(): Promise<void> {
-  if (!detail.value) return
-  const next = detail.value.status === 'READY' ? 'DRAFT' : 'READY'
-  try {
-    await updatePaper({ id: detail.value.id, status: next })
-    detail.value.status = next
-    loadList()
+    await updatePaper({ id: row.id, status: next })
+    row.status = next
   } catch (e) {
     ElMessage.error(errMsg(e))
   }
@@ -363,7 +264,7 @@ async function doClone(): Promise<void> {
     const id = await clonePaper({ id: cloneTarget.value.id, studentId: cloneStudentId.value })
     cloneVisible.value = false
     await loadList()
-    openDetailById(id)
+    openCompose(id)
     ElMessage.success('已派生一份学生专属卷')
   } catch (e) {
     ElMessage.error(errMsg(e))
@@ -386,6 +287,40 @@ async function onDelete(row: Paper): Promise<void> {
     loadList()
   } catch (e) {
     ElMessage.error(errMsg(e))
+  }
+}
+
+// ===================== 一键复用（复制为新卷） =====================
+const reuseVisible = ref(false)
+const reuseSource = ref<Paper | null>(null)
+const reuseTitle = ref('')
+const reuseStudentId = ref<number | undefined>(undefined)
+const reuseLoading = ref(false)
+
+function openReuse(row: Paper): void {
+  reuseSource.value = row
+  reuseTitle.value = row.title + '（副本）'
+  reuseStudentId.value = row.studentId ?? undefined
+  reuseVisible.value = true
+}
+
+async function doReuse(): Promise<void> {
+  if (!reuseSource.value) return
+  reuseLoading.value = true
+  try {
+    const id = await reusePaper({
+      sourceId: reuseSource.value.id,
+      title: reuseTitle.value.trim() || undefined,
+      studentId: reuseStudentId.value
+    })
+    reuseVisible.value = false
+    await loadList()
+    openCompose(id)
+    ElMessage.success('已复用为新卷')
+  } catch (e) {
+    ElMessage.error(errMsg(e))
+  } finally {
+    reuseLoading.value = false
   }
 }
 
@@ -487,11 +422,15 @@ onMounted(() => {
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="250" fixed="right">
+      <el-table-column label="操作" width="320" fixed="right">
         <template #default="{ row }">
-          <el-button link type="primary" @click="openDetailById(row.id)">查看</el-button>
+          <el-button link type="primary" @click="openCompose(row.id)">制卷</el-button>
           <el-button link type="primary" @click="printPaper(row)">打印</el-button>
+          <el-button link type="primary" @click="openReuse(row)">复用</el-button>
           <el-button link type="primary" @click="openClone(row)">派给学生</el-button>
+          <el-button link :type="row.status === 'READY' ? 'warning' : 'success'" @click="toggleStatus(row)">
+            {{ row.status === 'READY' ? '退回草稿' : '标记可用' }}
+          </el-button>
           <el-button link type="danger" @click="onDelete(row)">删除</el-button>
         </template>
       </el-table-column>
@@ -646,115 +585,6 @@ onMounted(() => {
       </template>
     </el-dialog>
 
-    <!-- 卷详情 -->
-    <el-drawer v-model="detailVisible" size="680px">
-      <template #header>
-        <div class="detail-head">
-          <span class="detail-title">{{ detail?.title }}</span>
-          <el-tag v-if="detail?.studentName" size="small" type="warning" effect="plain">
-            {{ detail.studentName }} 专属
-          </el-tag>
-          <el-tag v-else size="small" type="info" effect="plain">通用卷</el-tag>
-        </div>
-      </template>
-      <template v-if="detail">
-        <div class="detail-meta">
-          <span>{{ detail.grade || '不限年级' }}</span>
-          <span>共 {{ detail.questions.length }} 题</span>
-          <span v-if="detail.parentTitle" class="muted">派生自：{{ detail.parentTitle }}</span>
-        </div>
-        <div class="detail-actions">
-          <el-button size="small" @click="openPicker">从题库加题</el-button>
-          <el-button size="small" @click="previewVisible = true">预览卷面</el-button>
-          <el-button size="small" @click="openPrint">打印</el-button>
-          <el-button size="small" :type="detail.status === 'READY' ? 'warning' : 'success'" @click="toggleStatus">
-            {{ detail.status === 'READY' ? '退回草稿' : '标记可用' }}
-          </el-button>
-        </div>
-        <el-empty v-if="!detail.questions.length" description="卷里还没有题，点「从题库加题」" :image-size="60" />
-        <div v-else class="q-list">
-          <div v-for="(q, i) in detail.questions" :key="q.id" class="q-item">
-            <span class="q-no">{{ i + 1 }}</span>
-            <div class="q-body">
-              <div class="q-stem">{{ q.stem }}</div>
-              <div class="q-sub">
-                <span>{{ q.kpName || '未标知识点' }}</span>
-                <span v-if="q.qtype"> · {{ q.qtype }}</span>
-              </div>
-            </div>
-            <div class="q-ops">
-              <el-button link type="primary" :disabled="i === 0" @click="moveQuestion(i, -1)">上移</el-button>
-              <el-button link type="primary" :disabled="i === detail.questions.length - 1" @click="moveQuestion(i, 1)">下移</el-button>
-              <el-button link type="danger" @click="removeQuestion(i)">移出</el-button>
-            </div>
-          </div>
-        </div>
-      </template>
-    </el-drawer>
-
-    <!-- 从题库选题 -->
-    <el-dialog v-model="qPickerVisible" title="从题库加题" width="760px">
-      <div class="filters" style="margin-bottom: 12px">
-        <el-select v-model="pickFilter.grade" placeholder="全部年级" clearable style="width: 120px">
-          <el-option v-for="g in grades" :key="g.id" :label="g.dictValue" :value="g.dictValue" />
-        </el-select>
-        <el-select v-model="pickFilter.kpId" placeholder="全部知识点" clearable filterable style="width: 190px">
-          <el-option v-for="k in kps" :key="k.id" :label="k.name" :value="k.id" />
-        </el-select>
-        <el-input v-model="pickFilter.keyword" placeholder="搜索题干" clearable style="width: 180px" @keyup.enter="pickPickerList" />
-        <el-button type="primary" @click="pickPickerList">查询</el-button>
-      </div>
-      <el-table
-        v-loading="pickLoading"
-        :data="pickList"
-        height="360"
-        border
-        @selection-change="(rows: Question[]) => (pickIds = rows.map((r) => r.id))"
-      >
-        <el-table-column type="selection" width="46" :selectable="(row: Question) => !alreadyIn(row.id)" />
-        <el-table-column label="题干" min-width="300">
-          <template #default="{ row }">
-            <span>{{ row.stem.split('\n')[0] }}</span>
-            <el-tag v-if="alreadyIn(row.id)" size="small" type="info" style="margin-left: 6px">已在卷中</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="kpName" label="知识点" width="140" />
-        <el-table-column prop="qtype" label="题型" width="80" align="center" />
-      </el-table>
-      <template #footer>
-        <span class="tip" style="margin-right: auto">已选 {{ pickIds.length }} 题</span>
-        <el-button @click="qPickerVisible = false">取消</el-button>
-        <el-button type="primary" @click="confirmPick">加入试卷</el-button>
-      </template>
-    </el-dialog>
-
-    <!-- 卷面预览（学生版：无答案、带作答留白；打印走独立整页） -->
-    <el-dialog v-model="previewVisible" title="卷面预览（学生版）" width="760px" top="5vh">
-      <div v-if="detail" class="paper-preview">
-        <div class="paper-meta-row">
-          <span>姓名：______</span>
-          <span>班级：______</span>
-          <span>日期：______</span>
-          <span>得分：______</span>
-        </div>
-        <h3 class="paper-title">{{ detail.title }}</h3>
-        <div v-for="(q, i) in detail.questions" :key="q.id" class="paper-q">
-          <div class="paper-stem">{{ i + 1 }}. {{ q.stem }}</div>
-          <div v-if="parseOptions(q.options).length" class="paper-opts">
-            <div v-for="(o, oi) in parseOptions(q.options)" :key="oi">
-              {{ String.fromCharCode(65 + oi) }}. {{ o }}
-            </div>
-          </div>
-          <div class="paper-blank"></div>
-        </div>
-      </div>
-      <template #footer>
-        <span class="tip" style="margin-right: auto">学生版不含答案，打印后即为可直接下发的卷面</span>
-        <el-button @click="previewVisible = false">关闭</el-button>
-        <el-button type="primary" @click="openPrint">打印 / 导出 PDF</el-button>
-      </template>
-    </el-dialog>
-
     <!-- 派生给学生 -->
     <el-dialog v-model="cloneVisible" title="派发给学生" width="420px">
       <p class="tip">
@@ -766,6 +596,28 @@ onMounted(() => {
       <template #footer>
         <el-button @click="cloneVisible = false">取消</el-button>
         <el-button type="primary" @click="doClone">确认派生</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 一键复用：复制为新卷 -->
+    <el-dialog v-model="reuseVisible" title="复用为新卷" width="480px">
+      <p class="tip">
+        以「<b>{{ reuseSource?.title }}</b>」（{{ reuseSource?.questionCount || 0 }} 题）为蓝本，
+        生成一份<b>新的可编辑卷</b>，题目与编排一并复制，原卷不受影响。
+      </p>
+      <el-form label-width="80px" style="margin-top: 12px">
+        <el-form-item label="新卷名">
+          <el-input v-model="reuseTitle" placeholder="留空则自动命名" />
+        </el-form-item>
+        <el-form-item label="归属">
+          <el-select v-model="reuseStudentId" placeholder="不选 = 沿用原卷归属" clearable style="width: 100%">
+            <el-option v-for="s in students" :key="s.id" :label="`${s.name}${s.grade ? '（' + s.grade + '）' : ''}`" :value="s.id" />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="reuseVisible = false">取消</el-button>
+        <el-button type="primary" :loading="reuseLoading" @click="doReuse">生成新卷</el-button>
       </template>
     </el-dialog>
   </el-card>

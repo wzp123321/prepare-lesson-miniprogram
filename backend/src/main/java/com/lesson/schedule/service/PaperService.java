@@ -4,6 +4,7 @@ import com.lesson.schedule.common.dto.PaperGenerateCommitDTO;
 import com.lesson.schedule.common.dto.PaperGenerateDTO;
 import com.lesson.schedule.common.dto.PaperQueryDTO;
 import com.lesson.schedule.common.dto.PaperQuestionsSetDTO;
+import com.lesson.schedule.common.dto.PaperReuseDTO;
 import com.lesson.schedule.common.vo.PaperDetailVO;
 import com.lesson.schedule.common.vo.PaperGeneratePreviewVO;
 import com.lesson.schedule.common.vo.PaperVO;
@@ -31,7 +32,10 @@ public interface PaperService {
     /** 派生：克隆卷 + 克隆题目，改后不影响原卷。 */
     Long clone(Long id, Long studentId);
 
-    /** 编排题目（整体覆盖，数组顺序即题号顺序）。 */
+    /** 一键复用：以蓝本卷生成一份新的可编辑卷（复制编排 + 卷内快照，不克隆题库行）。 */
+    Long reuse(PaperReuseDTO dto);
+
+    /** 编排题目（整体覆盖，数组顺序即题号顺序；可携带卷内编辑快照）。 */
     void setQuestions(PaperQuestionsSetDTO dto);
 
     /** 一键组卷：按知识点随机抽题成卷（直接落库，保留兼容）。 */

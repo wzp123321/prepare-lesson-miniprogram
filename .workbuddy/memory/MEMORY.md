@@ -56,7 +56,8 @@
   不要静默少给。
 - **打印走独立整页**：`/print/paper/:id` → `PaperPrintView.vue`，**挂在 AdminLayout 之外**（顶层路由，无侧栏）。
   浏览器打印 + `@media print` + `@page A4 portrait`，不引任何打印库。
-- **卷面渲染约定**：按题型分大题（顺序由 `frontend/src/constants/question.ts` 的 `QTYPE_ORDER` 决定）
+- **卷面渲染约定**：按题型分大题，顺序由 **`frontend/src/utils/qtype.ts` 的 `QTYPE_ORDER`** 决定
+  （`constants/question.ts` 只留 `QTYPES`/`DIFFICULTY_LABEL`；打印页与制卷台共用 `qtypeWeight()`）
   →「一、选择题（共 N 小题）」；`.big-q`/`.q` 必须带 `break-inside: avoid`。
 - **只做学生版**：打印/预览**不渲染 answer/analysis**（后端会返回，前端有意不画）；
   作答留白按题型区分（选择/填空/判断 1 行、阅读/古诗文 3 行、写作空白框）。
@@ -64,6 +65,54 @@
 - 录题抽屉：**`kpId` 不必填**（留空可存，但组卷抽不到）；知识点下拉按 `category` 分组（el-option-group）；
   判断题选项固定「正确/错误」；答案支持**点字母**多选（拼成 "AB"）且保留手输；题干输入触发查重提示。
 - `paper_question` 是**纯引用表**：改一道题会影响所有引用它的卷（只有 `clone` 会复制题目行）。UI 上要给警告。
+
+## 制卷台（2026-10-10 交付，改动请沿用这套定式）
+- **独立整页** `/prep/compose/:id` → `PaperComposeView.vue`，**挂 AdminLayout 之外**（顶层路由，无侧栏）；
+  试卷列表页「制卷」按钮跳这里，列表页**不再有编排抽屉**。
+- 三栏 `grid 300px | 1fr | 260px`，整页 `100vh`；左=试题库（筛选+卡片拖出）、中=卷面、右=组卷信息。
+- **拖拽用 `vuedraggable`**（已在 `package.json`）：`group={name:'compose-questions',pull:'clone',put:true}`；
+  题库→卷面是克隆、卷面内是移动；行 `handle=".drag-handle"`（左侧 `⠿`）；**可拖到任意 index**（不限本大题内）。
+- **行模型 `ComposeRow`**：阅读/古诗文 2 小题并排一行（`isPairedType`），其余一题一行；
+  行内小题各占**独立连续题号**（`numberAt(rowIndex,qi)`）。并排/拆开走**行级按钮** ——
+  **不要回到"落点吸并"**（隐式、不可控，已弃用）。
+- **自动保存**：变动 → 防抖 500ms → `POST /papers/questions/set` 整体覆盖；顶部显示保存态；
+  `Ctrl/Cmd+S` 立即存；`onBeforeUnmount` 补存。**不要加逐题「保存」按钮**（竞品缺陷，用户明确不学）。
+- 卷面拍平顺序 `flatQuestions()` **= 打印页题号顺序**（所见即所得）。
+- 竞品取舍已定：抄「左题右卷 + 拖拽排版 + 弹层看题 + 已入卷置灰」；
+  **不抄**装订线/答题卡/双栏/分值细目表、逐题保存、拍照匹配题库、学情驱动组卷（无数据源）。
+
+## 批量导入录题（2026-10-10 交付）
+- 后端 `POST /api/questions/check-duplicates`（BE-Q-06）：入参 `stems[]`，返回同序 `{dupId,dupStem,exact}`。
+  归一化**必须剥行首题号**（`1.`/`1、`/`一、`），否则假阴性；前缀检索用前 8 字；归一化后 < 4 字不参与匹配。
+- `batchCreate` 已含**批内去重**（同批归一化相同只入第一条）。
+- 导入弹窗核对区是**结构化表格**（勾选/题型/题干/答案/知识点/难度），有**体检条**（缺答案/缺知识点/疑似重复计数）；
+  行 key 必须用 **uid 不用下标**（否则输入框串行）；与题库完全相同的题默认不勾选。
+
+## 批量导入录题（2026-10-10 交付）
+- 后端 `POST /api/questions/check-duplicates`（BE-Q-06）：入参 `stems[]`，返回同序 `{dupId,dupStem,exact}`。
+  归一化**必须剥行首题号**（`1.`/`1、`/`一、`），否则假阴性；前缀检索用前 8 字；归一化后 < 4 字不参与匹配。
+- `batchCreate` 已含**批内去重**（同批归一化相同只入第一条）。
+- 导入弹窗核对区是**结构化表格**（勾选/题型/题干/答案/知识点/难度），有**体检条**（缺答案/缺知识点/疑似重复计数）；
+  行 key 必须用 **uid 不用下标**（否则输入框串行）；与题库完全相同的题默认不勾选。
+
+## 卷内编辑（试卷内容覆盖）与一键复用（2026-10-10 定型，当日二次改版）
+- ⚠️ **不要用"快照"这个词/这种列结构**：用户明确否决在 `paper_question` 上摊 `snap_*` 宽列（嫌表宽）。
+  定案 **edited 标记位 + override 独立表**：
+  - `paper_question` **只有 5 列**（`id/paper_id/question_id/sort_order/edited`）。
+  - `paper_question_override`（一对一，`paper_question_id` 唯一）存被编辑过的题面：`qtype/stem/options/answer/analysis/difficulty`。
+  - 语义：`edited=0` 读 question 表；`edited=1` 读 override 表（查不到回落题库）；改卷**不影响题库与其他卷**。
+- 后端出口唯一 `PaperServiceImpl.toQuestionVOsFromLinks()`；`copyOverride(from,to)` 供 clone/reuse 复制；
+  `setQuestions` 整体覆盖要**先删旧 override 再删编排项**（否则留孤儿行）。
+- 前端 `api/paper.ts` 的 `PaperQuestionItem` 是**平铺字段**（qtype/stem/...），后端 DTO `Item` 同名——契约稳定，制卷台无需关心存储形态。
+- **否决 A 方案（只加标记+编辑直接改题库）的硬证据**：`PrepServiceImpl.suggest`（备课页智能推荐）直接查 question 表按 kpId 捞通用题、
+  绕过试卷编排；若编辑直接改题库，备课推荐会被静默污染。单人自用无人提醒 → 必须隔离。
+- **一键复用** `POST /api/papers/reuse {sourceId,title?,studentId?}`：以蓝本卷生成**新的可编辑卷**，
+  **不克隆题库行**，只复制编排顺序 + override；studentId 不传沿用蓝本；新卷 parentPaperId=源卷、status=DRAFT。
+- 制卷台入口：顶部「从已有试卷导入」（选中卷题目**追加**到当前卷末尾，重复跳过）+「整卷复用」（另存新卷）；列表页操作列「复用」。
+- **UI 偏好**：用户明确**反感"AI 味"模板感**，制卷/工作台类页面要专业编辑台质感——
+  `tokens.css` 已备 `--grad-toolbar/--grad-brand(-soft)/--paper-bg/--canvas-bg/--canvas-grad/--ring-brand/--hairline/--shadow-raise/--shadow-float`。
+  卷面用"白纸浮灰底"+`--shadow-float`；按钮改自绘 `.op-btn/.side-btn/.qtype-chip` 代替裸 el-button link。
+  ⚠️ **UI 升级目前只覆盖制卷模块**（制卷台/试卷列表/打印页）；题库页、知识点页、备课页尚未升级（用户未确认，勿擅自推）。
 
 ## 今日待办（2026-10-09 交付）
 - **系统落地页已改为 `/dashboard/todo`（今日待办）**，不再是今日视图；兜底路由同步改。

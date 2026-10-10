@@ -54,6 +54,21 @@
   /* ---------- 阴影（克制，靠层次而非重影） ---------- */
   --shadow-card: 0 1px 2px rgba(16, 24, 40, 0.04), 0 4px 16px rgba(16, 24, 40, 0.05);
   --shadow-pop: 0 12px 32px rgba(16, 24, 40, 0.12);
+  --shadow-raise: 0 1px 3px rgba(16, 24, 40, 0.06), 0 8px 24px rgba(16, 24, 40, 0.06);
+  --shadow-float: 0 2px 4px rgba(16, 24, 40, 0.05), 0 16px 40px rgba(16, 24, 40, 0.12);
+
+  /* ---------- 工作台专用（制卷台等重交互页） ---------- */
+  /* 工具栏/面板顶部微渐层，替代纯色块的"塑料感" */
+  --grad-toolbar: linear-gradient(180deg, #ffffff 0%, #fbfcfe 100%);
+  --grad-brand: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+  --grad-brand-soft: linear-gradient(135deg, #eef2ff 0%, #e0e7ff 100%);
+  /* 纸张：卷面画布底色比页面背景略暖，带一点纸感 */
+  --paper-bg: #ffffff;
+  --canvas-bg: #eef0f4;
+  --canvas-grad: radial-gradient(circle at 50% 0%, #f4f6fa 0%, #e9ecf2 100%);
+  /* 强调描边（选中/拖拽落点） */
+  --ring-brand: 0 0 0 3px rgba(99, 102, 241, 0.14);
+  --hairline: rgba(16, 24, 40, 0.06);
 
   /* ---------- 布局尺寸 ---------- */
   --sidebar-width: 224px;

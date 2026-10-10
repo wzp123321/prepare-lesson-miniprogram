@@ -174,15 +174,34 @@ CREATE TABLE IF NOT EXISTS paper (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='试卷';
 
 -- 试卷-题目编排
+-- edited 语义：0 = 本卷这道题未被编辑，查卷时读 question 表原题；
+--             1 = 本卷这道题被编辑过，查卷时读 paper_question_override 表。
 CREATE TABLE IF NOT EXISTS paper_question (
     id          BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键',
     paper_id    BIGINT NOT NULL                COMMENT '试卷',
-    question_id BIGINT NOT NULL                COMMENT '题目',
+    question_id BIGINT NOT NULL                COMMENT '来源题目（题库引用）',
     sort_order  INT    NOT NULL DEFAULT 0      COMMENT '题号顺序',
+    edited      TINYINT NOT NULL DEFAULT 0     COMMENT '卷内是否编辑过 1/0（1 时内容见 paper_question_override）',
     PRIMARY KEY (id),
     UNIQUE KEY uk_paper_q (paper_id, question_id),
     KEY idx_pq_question (question_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='试卷-题目编排';
+
+-- 试卷-题目内容覆盖（卷内编辑）
+-- 只有「被编辑过」的编排项在这里才有行；未编辑的题不占行，查卷时回落 question 表。
+-- 这样：改某份卷的题面不影响题库原题，也不影响其他引用同一题的试卷。
+CREATE TABLE IF NOT EXISTS paper_question_override (
+    id               BIGINT        NOT NULL AUTO_INCREMENT COMMENT '主键',
+    paper_question_id BIGINT       NOT NULL                COMMENT '所属编排项 paper_question.id',
+    qtype            VARCHAR(32)   DEFAULT NULL            COMMENT '题型',
+    stem             TEXT          NOT NULL                COMMENT '题干',
+    options          JSON          DEFAULT NULL            COMMENT '选项 JSON 数组',
+    answer           VARCHAR(1000) DEFAULT NULL            COMMENT '答案',
+    analysis         VARCHAR(2000) DEFAULT NULL            COMMENT '解析',
+    difficulty       TINYINT       DEFAULT NULL            COMMENT '难度 1易/2中/3难',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_pqo_link (paper_question_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='试卷-题目内容覆盖（卷内编辑）';
 
 -- 课次-知识点（一课多点）
 CREATE TABLE IF NOT EXISTS lesson_knowledge (
@@ -273,3 +292,37 @@ SET @ddl := IF(@col_exists = 0,
 PREPARE stmt FROM @ddl;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
+
+-- paper_question 卷内编辑：早期版本曾在编排表上摊开 6 列 snap_* 快照。
+-- 现改为「编排表只留 edited 标记 + 内容进 paper_question_override 表」，
+-- 这里把旧库里遗留的 snap_* 列删掉（有才删，没有跳过）。
+SET @tbl := 'paper_question';
+SET @c := (SELECT COUNT(*) FROM information_schema.COLUMNS
+           WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = @tbl AND COLUMN_NAME = 'snap_qtype');
+SET @ddl := IF(@c = 1, 'ALTER TABLE paper_question DROP COLUMN snap_qtype', 'SELECT 1');
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @c := (SELECT COUNT(*) FROM information_schema.COLUMNS
+           WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = @tbl AND COLUMN_NAME = 'snap_stem');
+SET @ddl := IF(@c = 1, 'ALTER TABLE paper_question DROP COLUMN snap_stem', 'SELECT 1');
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @c := (SELECT COUNT(*) FROM information_schema.COLUMNS
+           WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = @tbl AND COLUMN_NAME = 'snap_options');
+SET @ddl := IF(@c = 1, 'ALTER TABLE paper_question DROP COLUMN snap_options', 'SELECT 1');
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @c := (SELECT COUNT(*) FROM information_schema.COLUMNS
+           WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = @tbl AND COLUMN_NAME = 'snap_answer');
+SET @ddl := IF(@c = 1, 'ALTER TABLE paper_question DROP COLUMN snap_answer', 'SELECT 1');
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @c := (SELECT COUNT(*) FROM information_schema.COLUMNS
+           WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = @tbl AND COLUMN_NAME = 'snap_analysis');
+SET @ddl := IF(@c = 1, 'ALTER TABLE paper_question DROP COLUMN snap_analysis', 'SELECT 1');
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @c := (SELECT COUNT(*) FROM information_schema.COLUMNS
+           WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = @tbl AND COLUMN_NAME = 'snap_difficulty');
+SET @ddl := IF(@c = 1, 'ALTER TABLE paper_question DROP COLUMN snap_difficulty', 'SELECT 1');
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+-- 旧库若还没有 edited 列（更早版本），补上
+SET @c := (SELECT COUNT(*) FROM information_schema.COLUMNS
+           WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = @tbl AND COLUMN_NAME = 'edited');
+SET @ddl := IF(@c = 0, 'ALTER TABLE paper_question ADD COLUMN edited TINYINT NOT NULL DEFAULT 0 COMMENT ''卷内是否编辑过 1/0'' AFTER sort_order', 'SELECT 1');
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;

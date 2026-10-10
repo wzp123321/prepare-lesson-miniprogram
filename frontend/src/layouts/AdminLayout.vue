@@ -130,7 +130,10 @@ function handleSelect(path: string): void {
 /* ===================== 侧栏（深色） ===================== */
 .app-aside {
   background: var(--sidebar-bg);
-  overflow: hidden;
+  /* 菜单项多于视口时整体滚动：用 overflow-y:auto 而非 hidden，
+     否则二级菜单展开后底部几项会被裁掉、又滚不到（问题 1）。 */
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 .app-logo {
   height: var(--logo-height);

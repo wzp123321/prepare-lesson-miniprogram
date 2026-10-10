@@ -172,6 +172,11 @@ export interface Question {
   source: string | null
   createTime?: string
   updateTime?: string
+  /**
+   * 仅试卷详情返回：true 表示当前题干/选项/答案等取自「卷内编辑快照」，
+   * 而非题库原题。题库列表恒为 undefined。
+   */
+  edited?: boolean
 }
 
 /** 试卷类型：KP 知识点专项卷 / LESSON 课时题单 */

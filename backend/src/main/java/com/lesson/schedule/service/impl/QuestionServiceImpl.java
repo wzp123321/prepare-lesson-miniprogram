@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.lesson.schedule.common.BusinessException;
 import com.lesson.schedule.common.PageResult;
 import com.lesson.schedule.common.dto.QuestionQueryDTO;
+import com.lesson.schedule.common.vo.QuestionDupCheckVO;
 import com.lesson.schedule.common.vo.QuestionVO;
 import com.lesson.schedule.entity.KnowledgePoint;
 import com.lesson.schedule.entity.PaperQuestion;
@@ -97,9 +98,15 @@ public class QuestionServiceImpl implements QuestionService {
             throw new BusinessException(400, "一次最多入库 200 道题");
         }
         int ok = 0;
+        // 批内去重：同一批里题干归一化后相同的，只入第一条，避免粘贴重复段落重复入库
+        Set<String> seenInBatch = new HashSet<>();
         for (Question q : questions) {
             if (q == null || q.getStem() == null || q.getStem().isBlank()) {
                 continue; // 跳过无效项，不中断整批
+            }
+            String norm = normalizeStem(q.getStem());
+            if (!norm.isEmpty() && !seenInBatch.add(norm)) {
+                continue; // 本批内已出现过同题
             }
             if (q.getKpId() != null && knowledgePointMapper.selectById(q.getKpId()) == null) {
                 q.setKpId(null); // 知识点已不存在时置空，不中断整批
@@ -112,9 +119,96 @@ public class QuestionServiceImpl implements QuestionService {
             ok++;
         }
         if (ok == 0) {
-            throw new BusinessException(400, "没有有效题目（题干为空）");
+            throw new BusinessException(400, "没有有效题目（题干为空或与本批重复）");
         }
         return ok;
+    }
+
+    /**
+     * 批量题干查重。
+     * <p>策略：把本批题干归一化后，先按归一化题干精确命中；未命中的再用前若干个字做前缀
+     * 模糊查询，避免「同一题前面加了序号/空格」这类伪重复被漏掉。只取相似度最高的第一条。</p>
+     */
+    @Override
+    public List<QuestionDupCheckVO> checkDuplicates(List<String> stems) {
+        List<QuestionDupCheckVO> result = new ArrayList<>();
+        if (stems == null || stems.isEmpty()) {
+            return result;
+        }
+        // 用归一化后的前 8 个字做候选检索：太短易误召回，太长可能因原文有细微差异而漏
+        List<String> prefixes = new ArrayList<>();
+        for (String stem : stems) {
+            String norm = normalizeStem(stem);
+            prefixes.add(norm.length() > 8 ? norm.substring(0, 8) : norm);
+        }
+
+        // 一次把本批所有前缀的候选都捞出来，避免逐条查库
+        Set<String> nonEmpty = new HashSet<>(prefixes);
+        nonEmpty.remove("");
+        List<Question> candidates = nonEmpty.isEmpty()
+                ? List.of()
+                : questionMapper.selectList(
+                        Wrappers.<Question>lambdaQuery()
+                                .isNull(Question::getStudentId)
+                                .and(w -> {
+                                    for (String prefix : nonEmpty) {
+                                        w.or().like(Question::getStem, prefix);
+                                    }
+                                }));
+
+        Map<String, Question> byNorm = new HashMap<>();
+        for (Question c : candidates) {
+            String norm = normalizeStem(c.getStem());
+            byNorm.putIfAbsent(norm, c);
+        }
+
+        for (int i = 0; i < stems.size(); i++) {
+            String norm = normalizeStem(stems.get(i));
+            QuestionDupCheckVO vo = new QuestionDupCheckVO();
+            if (norm.length() >= 4) {
+                Question hit = byNorm.get(norm);
+                boolean exact = hit != null;
+                if (hit == null) {
+                    // 前缀命中：取库里题干归一化后以该前缀开头的那条，视为「疑似重复」
+                    String prefix = prefixes.get(i);
+                    hit = candidates.stream()
+                            .filter(c -> normalizeStem(c.getStem()).startsWith(prefix))
+                            .findFirst()
+                            .orElse(null);
+                }
+                if (hit != null) {
+                    vo.setDupId(hit.getId());
+                    vo.setDupStem(abbreviate(hit.getStem()));
+                    vo.setExact(exact);
+                }
+            }
+            result.add(vo);
+        }
+        return result;
+    }
+
+    /**
+     * 题干归一化：用于「同一题」判定。
+     * <p>先剥掉行首题号（`1.` `1、` `一、`）—— 同一道题粘进题库时带不带序号不确定，
+     * 不剥掉就会出现「题干其实一样、归一化后不等」的假阴性；再去掉所有空白与标点。</p>
+     */
+    private String normalizeStem(String stem) {
+        if (stem == null) {
+            return "";
+        }
+        // 首行题号：阿拉伯（第1、/ 1. / 1、/ 1)）+ 中文（一、/ 二．）
+        String noLeadingNo = stem.replaceFirst(
+                "^\\s*(?:第\\s*)?(?:\\d{1,3}|[一二三四五六七八九十]{1,3})\\s*[.、．:：)）]\\s*", "");
+        return noLeadingNo.replaceAll("[\\s\\p{Punct}，。、；：？！“”‘’（）《》【】…—]", "");
+    }
+
+    /** 题干摘要：首行前 40 字，用于提示文案。 */
+    private String abbreviate(String stem) {
+        if (stem == null) {
+            return "";
+        }
+        String first = stem.split("\n")[0].trim();
+        return first.length() > 40 ? first.substring(0, 40) + "…" : first;
     }
 
     @Override

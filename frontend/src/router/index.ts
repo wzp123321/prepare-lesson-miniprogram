@@ -106,6 +106,13 @@ const routes: RouteRecordRaw[] = [
       }
     ]
   },
+  // 制卷台：独立整页（无侧栏 / 无导航），三栏编排：左试题库 / 中卷面 / 右组卷栏
+  {
+    path: '/prep/compose/:id',
+    name: 'PaperCompose',
+    component: () => import('@/views/prep/PaperComposeView.vue'),
+    meta: { title: '制卷台' }
+  },
   // 打印视图：独立整页（无侧栏 / 无导航），Ctrl+P 直接出纸
   {
     path: '/print/paper/:id',

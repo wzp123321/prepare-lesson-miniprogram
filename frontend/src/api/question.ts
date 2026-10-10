@@ -44,3 +44,18 @@ export function deleteQuestion(id: number): Promise<void> {
 export function batchCreateQuestions(questions: Partial<Question>[]): Promise<number> {
   return request.post<number, number>('/questions/batch', { questions })
 }
+
+/** 单条题干的查重结果（与提交的 stems 同序） */
+export interface QuestionDupCheck {
+  /** 题库中疑似重复的题目 id；没命中为 null */
+  dupId: number | null
+  /** 疑似重复题的题干摘要 */
+  dupStem: string | null
+  /** true = 题干完全相同，false = 仅高度相似 */
+  exact: boolean | null
+}
+
+// 导入前批量查重：一次提交本批题干，返回同序结果
+export function checkQuestionDuplicates(stems: string[]): Promise<QuestionDupCheck[]> {
+  return request.post<QuestionDupCheck[], QuestionDupCheck[]>('/questions/check-duplicates', { stems })
+}

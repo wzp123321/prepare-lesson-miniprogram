@@ -7,6 +7,7 @@ import com.lesson.schedule.common.dto.PaperGenerateCommitDTO;
 import com.lesson.schedule.common.dto.PaperGenerateDTO;
 import com.lesson.schedule.common.dto.PaperQueryDTO;
 import com.lesson.schedule.common.dto.PaperQuestionsSetDTO;
+import com.lesson.schedule.common.dto.PaperReuseDTO;
 import com.lesson.schedule.common.vo.PaperDetailVO;
 import com.lesson.schedule.common.vo.PaperGeneratePreviewVO;
 import com.lesson.schedule.common.vo.PaperVO;
@@ -15,12 +16,14 @@ import com.lesson.schedule.entity.KnowledgePoint;
 import com.lesson.schedule.entity.LessonPaper;
 import com.lesson.schedule.entity.Paper;
 import com.lesson.schedule.entity.PaperQuestion;
+import com.lesson.schedule.entity.PaperQuestionOverride;
 import com.lesson.schedule.entity.Question;
 import com.lesson.schedule.entity.Student;
 import com.lesson.schedule.mapper.KnowledgePointMapper;
 import com.lesson.schedule.mapper.LessonPaperMapper;
 import com.lesson.schedule.mapper.PaperMapper;
 import com.lesson.schedule.mapper.PaperQuestionMapper;
+import com.lesson.schedule.mapper.PaperQuestionOverrideMapper;
 import com.lesson.schedule.mapper.QuestionMapper;
 import com.lesson.schedule.mapper.StudentMapper;
 import com.lesson.schedule.service.PaperService;
@@ -41,6 +44,7 @@ public class PaperServiceImpl implements PaperService {
 
     private final PaperMapper paperMapper;
     private final PaperQuestionMapper paperQuestionMapper;
+    private final PaperQuestionOverrideMapper paperQuestionOverrideMapper;
     private final QuestionMapper questionMapper;
     private final KnowledgePointMapper knowledgePointMapper;
     private final StudentMapper studentMapper;
@@ -115,12 +119,9 @@ public class PaperServiceImpl implements PaperService {
                 .eq(PaperQuestion::getPaperId, id)
                 .orderByAsc(PaperQuestion::getSortOrder)
                 .orderByAsc(PaperQuestion::getId));
-        List<Long> qIds = new ArrayList<>();
-        for (PaperQuestion l : links) {
-            qIds.add(l.getQuestionId());
-        }
-        vo.setQuestionCount((long) qIds.size());
-        vo.setQuestions(toQuestionVOs(qIds));
+        vo.setQuestionCount((long) links.size());
+        // 按编排顺序组装题目：有快照用快照，没有读题库原题
+        vo.setQuestions(toQuestionVOsFromLinks(links));
         return vo;
     }
 
@@ -234,7 +235,12 @@ public class PaperServiceImpl implements PaperService {
             nl.setPaperId(np.getId());
             nl.setQuestionId(nq.getId());
             nl.setSortOrder(l.getSortOrder());
+            nl.setEdited(l.getEdited() == null ? 0 : l.getEdited());
             paperQuestionMapper.insert(nl);
+            // 卷内编辑内容一并带走，保持派生卷卷面与原卷一致
+            if (Integer.valueOf(1).equals(l.getEdited())) {
+                copyOverride(l.getId(), nl.getId());
+            }
         }
         return np.getId();
     }
@@ -249,27 +255,111 @@ public class PaperServiceImpl implements PaperService {
         if (paper == null) {
             throw new BusinessException(404, "试卷不存在");
         }
+        // 整体覆盖：先清旧编排及其内容覆盖（override 随编排项一起删）
+        List<PaperQuestion> oldLinks = paperQuestionMapper.selectList(Wrappers.<PaperQuestion>lambdaQuery()
+                .eq(PaperQuestion::getPaperId, dto.getPaperId()));
+        for (PaperQuestion old : oldLinks) {
+            paperQuestionOverrideMapper.delete(Wrappers.<PaperQuestionOverride>lambdaQuery()
+                    .eq(PaperQuestionOverride::getPaperQuestionId, old.getId()));
+        }
         paperQuestionMapper.delete(Wrappers.<PaperQuestion>lambdaQuery()
                 .eq(PaperQuestion::getPaperId, dto.getPaperId()));
-        List<Long> ids = dto.getQuestionIds();
-        if (ids == null || ids.isEmpty()) {
+
+        // 优先用 items（带卷内编辑覆盖）；否则退回 questionIds（全部视为未编辑）
+        List<PaperQuestionsSetDTO.Item> items = new ArrayList<>();
+        if (dto.getItems() != null && !dto.getItems().isEmpty()) {
+            items.addAll(dto.getItems());
+        } else if (dto.getQuestionIds() != null) {
+            for (Long qid : dto.getQuestionIds()) {
+                PaperQuestionsSetDTO.Item it = new PaperQuestionsSetDTO.Item();
+                it.setQuestionId(qid);
+                items.add(it);
+            }
+        }
+        if (items.isEmpty()) {
             return;
         }
         Set<Long> seen = new HashSet<>();
         int order = 0;
-        for (Long qid : ids) {
-            if (qid == null || !seen.add(qid)) {
+        for (PaperQuestionsSetDTO.Item it : items) {
+            if (it == null || it.getQuestionId() == null || !seen.add(it.getQuestionId())) {
                 continue;
             }
-            if (questionMapper.selectById(qid) == null) {
+            if (questionMapper.selectById(it.getQuestionId()) == null) {
                 continue;
             }
             PaperQuestion l = new PaperQuestion();
             l.setPaperId(dto.getPaperId());
-            l.setQuestionId(qid);
+            l.setQuestionId(it.getQuestionId());
             l.setSortOrder(++order);
+            l.setEdited(Boolean.TRUE.equals(it.getEdited()) ? 1 : 0);
             paperQuestionMapper.insert(l);
+            // 编辑过的题：内容单独落到 override 表（编排表不存内容）
+            if (Integer.valueOf(1).equals(l.getEdited())) {
+                PaperQuestionOverride ov = new PaperQuestionOverride();
+                ov.setPaperQuestionId(l.getId());
+                ov.setQtype(it.getQtype());
+                ov.setStem(it.getStem());
+                ov.setOptions(it.getOptions());
+                ov.setAnswer(it.getAnswer());
+                ov.setAnalysis(it.getAnalysis());
+                ov.setDifficulty(it.getDifficulty());
+                paperQuestionOverrideMapper.insert(ov);
+            }
         }
+    }
+
+    @Override
+    @Transactional
+    public Long reuse(PaperReuseDTO dto) {
+        if (dto == null || dto.getSourceId() == null) {
+            throw new BusinessException(400, "请选择要复用的试卷");
+        }
+        Paper src = paperMapper.selectById(dto.getSourceId());
+        if (src == null) {
+            throw new BusinessException(404, "蓝本试卷不存在");
+        }
+        // 归属：显式传了就用传的，否则沿用蓝本卷（含 studentId=null 的通用卷）
+        Long targetStudentId = dto.getStudentId() != null ? dto.getStudentId() : src.getStudentId();
+        if (dto.getStudentId() != null && studentMapper.selectById(dto.getStudentId()) == null) {
+            throw new BusinessException(400, "所选学生不存在");
+        }
+        String title = dto.getTitle() == null || dto.getTitle().isBlank()
+                ? src.getTitle() + "（副本）"
+                : dto.getTitle().trim();
+
+        Paper np = new Paper();
+        np.setTitle(title);
+        np.setGrade(src.getGrade());
+        np.setPaperType(src.getPaperType());
+        np.setStudentId(targetStudentId);
+        np.setParentPaperId(src.getId());
+        np.setStatus("DRAFT");
+        np.setRemark(src.getRemark());
+        paperMapper.insert(np);
+
+        // 复用编排：不克隆题库行，只复制引用顺序 + 卷内编辑快照
+        List<PaperQuestion> links = paperQuestionMapper.selectList(Wrappers.<PaperQuestion>lambdaQuery()
+                .eq(PaperQuestion::getPaperId, src.getId())
+                .orderByAsc(PaperQuestion::getSortOrder)
+                .orderByAsc(PaperQuestion::getId));
+        for (PaperQuestion l : links) {
+            // 只复制仍然存在的题，避免带入已被删除的题库行
+            if (questionMapper.selectById(l.getQuestionId()) == null) {
+                continue;
+            }
+            PaperQuestion npq = new PaperQuestion();
+            npq.setPaperId(np.getId());
+            npq.setQuestionId(l.getQuestionId());
+            npq.setSortOrder(l.getSortOrder());
+            npq.setEdited(l.getEdited() == null ? 0 : l.getEdited());
+            paperQuestionMapper.insert(npq);
+            // 卷内编辑内容一并复制到新卷
+            if (Integer.valueOf(1).equals(l.getEdited())) {
+                copyOverride(l.getId(), npq.getId());
+            }
+        }
+        return np.getId();
     }
 
     @Override
@@ -582,5 +672,109 @@ public class PaperServiceImpl implements PaperService {
             result.add(vo);
         }
         return result;
+    }
+
+    /**
+     * 按编排行组装题目 VO —— 卷内编辑语义的唯一出口。
+     * <p>{@code edited=1} 时，题干/选项/答案/解析/难度/题型取 {@code paper_question_override} 表；
+     * 未编辑（或 override 行意外缺失，双保险）则回落 {@code question} 表原题。
+     * 知识点名、年级、来源这些"归档属性"始终取原题（卷内编辑只改卷面呈现，不改编目归属）。
+     */
+    private List<QuestionVO> toQuestionVOsFromLinks(List<PaperQuestion> links) {
+        List<QuestionVO> result = new ArrayList<>();
+        if (links == null || links.isEmpty()) {
+            return result;
+        }
+        List<Long> qIds = new ArrayList<>();
+        List<Long> linkIds = new ArrayList<>();
+        for (PaperQuestion l : links) {
+            qIds.add(l.getQuestionId());
+            linkIds.add(l.getId());
+        }
+        // 一次把原题与"卷内编辑覆盖"都查出来，避免 N+1
+        List<Question> qs = questionMapper.selectBatchIds(qIds);
+        Map<Long, Question> qm = new HashMap<>();
+        Set<Long> kpIds = new HashSet<>();
+        Set<Long> stuIds = new HashSet<>();
+        for (Question q : qs) {
+            qm.put(q.getId(), q);
+            if (q.getKpId() != null) {
+                kpIds.add(q.getKpId());
+            }
+            if (q.getStudentId() != null) {
+                stuIds.add(q.getStudentId());
+            }
+        }
+        Map<Long, PaperQuestionOverride> ovm = new HashMap<>();
+        if (!linkIds.isEmpty()) {
+            for (PaperQuestionOverride ov : paperQuestionOverrideMapper.selectList(
+                    Wrappers.<PaperQuestionOverride>lambdaQuery()
+                            .in(PaperQuestionOverride::getPaperQuestionId, linkIds))) {
+                ovm.put(ov.getPaperQuestionId(), ov);
+            }
+        }
+        Map<Long, String> kpNames = new HashMap<>();
+        if (!kpIds.isEmpty()) {
+            for (KnowledgePoint kp : knowledgePointMapper.selectBatchIds(kpIds)) {
+                kpNames.put(kp.getId(), kp.getName());
+            }
+        }
+        Map<Long, String> stuNames = nameMap(stuIds, true);
+
+        for (PaperQuestion l : links) {
+            Question q = qm.get(l.getQuestionId());
+            if (q == null) {
+                continue;
+            }
+            PaperQuestionOverride ov = Integer.valueOf(1).equals(l.getEdited()) ? ovm.get(l.getId()) : null;
+            boolean edited = ov != null;
+            QuestionVO vo = new QuestionVO();
+            vo.setId(q.getId());
+            vo.setGrade(q.getGrade());
+            vo.setKpId(q.getKpId());
+            vo.setKpName(q.getKpId() == null ? null : kpNames.get(q.getKpId()));
+            vo.setStudentId(q.getStudentId());
+            vo.setStudentName(q.getStudentId() == null ? null : stuNames.get(q.getStudentId()));
+            vo.setSource(q.getSource());
+            vo.setCreateTime(q.getCreateTime());
+            vo.setUpdateTime(q.getUpdateTime());
+            vo.setEdited(edited);
+            if (edited) {
+                vo.setQtype(ov.getQtype() != null ? ov.getQtype() : q.getQtype());
+                vo.setStem(ov.getStem() != null ? ov.getStem() : q.getStem());
+                vo.setOptions(ov.getOptions());
+                vo.setAnswer(ov.getAnswer());
+                vo.setAnalysis(ov.getAnalysis());
+                vo.setDifficulty(ov.getDifficulty() != null ? ov.getDifficulty() : q.getDifficulty());
+            } else {
+                vo.setQtype(q.getQtype());
+                vo.setStem(q.getStem());
+                vo.setOptions(q.getOptions());
+                vo.setAnswer(q.getAnswer());
+                vo.setAnalysis(q.getAnalysis());
+                vo.setDifficulty(q.getDifficulty());
+            }
+            result.add(vo);
+        }
+        return result;
+    }
+
+    /** 把一条编排项的卷内编辑内容复制到另一条（clone / reuse 用）。 */
+    private void copyOverride(Long fromPaperQuestionId, Long toPaperQuestionId) {
+        PaperQuestionOverride src = paperQuestionOverrideMapper.selectOne(
+                Wrappers.<PaperQuestionOverride>lambdaQuery()
+                        .eq(PaperQuestionOverride::getPaperQuestionId, fromPaperQuestionId));
+        if (src == null) {
+            return;
+        }
+        PaperQuestionOverride dst = new PaperQuestionOverride();
+        dst.setPaperQuestionId(toPaperQuestionId);
+        dst.setQtype(src.getQtype());
+        dst.setStem(src.getStem());
+        dst.setOptions(src.getOptions());
+        dst.setAnswer(src.getAnswer());
+        dst.setAnalysis(src.getAnalysis());
+        dst.setDifficulty(src.getDifficulty());
+        paperQuestionOverrideMapper.insert(dst);
     }
 }

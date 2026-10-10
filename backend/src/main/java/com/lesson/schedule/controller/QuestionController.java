@@ -4,10 +4,13 @@ import com.lesson.schedule.common.PageResult;
 import com.lesson.schedule.common.Result;
 import com.lesson.schedule.common.dto.BatchQuestionDTO;
 import com.lesson.schedule.common.dto.IdDTO;
+import com.lesson.schedule.common.dto.QuestionDupCheckDTO;
 import com.lesson.schedule.common.dto.QuestionQueryDTO;
+import com.lesson.schedule.common.vo.QuestionDupCheckVO;
 import com.lesson.schedule.common.vo.QuestionVO;
 import com.lesson.schedule.entity.Question;
 import com.lesson.schedule.service.QuestionService;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -47,6 +50,15 @@ public class QuestionController {
     @PostMapping("/batch")
     public Result<Integer> batch(@RequestBody BatchQuestionDTO dto) {
         return Result.success(questionService.batchCreate(dto == null ? null : dto.getQuestions()));
+    }
+
+    /**
+     * 导入前查重。入参：stems 题干数组；返回与入参同序的查重结果。
+     * 供「批量导入」核对表格标注重复题，避免同题反复入库。
+     */
+    @PostMapping("/check-duplicates")
+    public Result<List<QuestionDupCheckVO>> checkDuplicates(@RequestBody QuestionDupCheckDTO dto) {
+        return Result.success(questionService.checkDuplicates(dto == null ? null : dto.getStems()));
     }
 
     /** BE-Q-04 改题。入参：id + 各字段。 */
