@@ -79,6 +79,22 @@ const bankQtypes = computed(() => {
 const BANK_GROUP = { name: 'compose-questions', pull: 'clone', put: false }
 const PAPER_GROUP = { name: 'compose-questions', pull: true, put: true }
 
+/**
+ * ⚠️ 拖拽落点的类型归一（关键，别删）：
+ * vuedraggable 在 onDragStart 里用「拖拽源」这一侧的 clone 生成 _underlying_vm_，
+ * 之后目标侧 onDragAdd 直接把这个对象 splice 进目标列表。
+ * 也就是说：题库 → 卷面 时，真正被塞进 composeRows 的是「题库 draggable 的 clone 结果」，
+ * 卷面侧的 :clone 在这条路径上根本不生效。
+ * 因此两侧都必须把 Question 包成 ComposeRow，否则裸 Question 进入列表后
+ * row.items 为 undefined → numberAt 读 .items.length 抛
+ * 「Cannot read properties of undefined (reading 'length')」。
+ * 这里两条防线：① 题库侧也挂 :clone="wrapAsRow"（根治）；
+ *              ② ComposeRow 类型守卫 + rowsOf() 兜底（防中间态）。
+ */
+function isComposeRow(v: unknown): v is ComposeRow {
+  return !!v && typeof v === 'object' && Array.isArray((v as ComposeRow).items)
+}
+
 /** 布局行：one = 单题独占（选择/填空/判断/写作/其他）；pair = 阅读/古诗文两问并排 */
 interface ComposeRow {
   key: string
@@ -119,45 +135,88 @@ function isPaired(q: Question): boolean {
 
 const composeRows = ref<ComposeRow[]>([])
 
+/**
+ * 把任意来源的一行归一成合法 ComposeRow。
+ * 拖拽中间态可能把「裸 Question」塞进列表，这里统一包成一行，避免下游读 items 抛错。
+ */
+function normalizeRow(v: unknown): ComposeRow {
+  if (isComposeRow(v)) {
+    // 已是合法行：过滤掉行内非法小题
+    return { key: v.key || rowKey(), items: v.items.filter((q): q is Question => !!q) }
+  }
+  // 裸 Question（或带 id 的对象）→ 包成单题行
+  const q = v as Question
+  return { key: rowKey(), items: q && q.id != null ? [q] : [] }
+}
+
+/** 只取合法行，顺带兜住拖拽中间态（供模板与统计统一入口） */
+const rowsOf = computed<ComposeRow[]>(() => composeRows.value.filter(isComposeRow))
+
 /** 拍平卷面所有小题（过滤掉任何非预期元素，避免拖拽中间态导致 undefined 抛错） */
 const flatQuestions = computed<Question[]>(() =>
-  composeRows.value.flatMap((r) => (Array.isArray(r?.items) ? r.items : [])).filter((q): q is Question => !!q)
+  rowsOf.value.flatMap((r) => r.items).filter((q): q is Question => !!q)
 )
 
 // ===================== 拖拽落点 =====================
 /**
  * 从题库拖入卷面时，源元素是 Question，而卷面列表的元素是 ComposeRow，
- * 两者结构不同 —— 必须用 :clone 把 Question 包成一行 ComposeRow，
- * 否则裸 Question 会被塞进 composeRows，导致 row.items 为 undefined（曾导致
- * 「Cannot read properties of undefined (reading 'id')」）。
+ * 两者结构不同 —— 必须把 Question 包成一行 ComposeRow，
+ * 否则裸 Question 会被塞进 composeRows，导致 row.items 为 undefined。
+ * 注意：vuedraggable 用的是「源」draggable 的 clone，所以题库侧也必须挂这个函数。
  */
 function wrapAsRow(q: Question): ComposeRow {
   return { key: rowKey(), items: [q] }
 }
 
-/** 卷面内拖拽结束：vuedraggable 已就地改好 composeRows，这里只负责拍平回 paper.questions 并落库 */
+/** 卷面内拖拽结束：vuedraggable 已就地改好 composeRows，这里归一化 + 拍平回 paper.questions 并落库 */
 async function onComposeChange(): Promise<void> {
+  // 拖拽中间态可能塞进非 ComposeRow 元素，落库前统一归一化
+  composeRows.value = composeRows.value.map(normalizeRow)
   await persist()
+}
+
+/** 是否正在从题库往卷面拖（用于高亮落点） */
+const dragging = ref(false)
+
+/**
+ * 点选加入（拖拽之外的轻量路径）：
+ * 点试题卡片右下角的「加入」或双击卡片 → 追加到卷面末尾。
+ * 阅读/古诗文会自动与末尾同类题并排，其余一题一行。比纯拖拽更省事。
+ */
+function appendQuestion(q: Question): void {
+  if (inPaper(q.id)) {
+    ElMessage.info('这道题已在卷面里了')
+    return
+  }
+  const last = composeRows.value[composeRows.value.length - 1]
+  if (isPaired(q) && isComposeRow(last) && last.items.length === 1 && isPaired(last.items[0])) {
+    // 末尾正好是一道未并排的阅读/古诗文 → 直接并排，省一次拖拽
+    last.items.push(q)
+  } else {
+    composeRows.value.push(wrapAsRow(q))
+  }
+  persist()
 }
 
 /** 「并排」按钮：把当前行与上一行合并成一行（仅阅读/古诗文用） */
 function mergeUp(rowIndex: number): void {
-  const cur = composeRows.value[rowIndex]
-  const prev = composeRows.value[rowIndex - 1]
-  if (!cur || !prev) return
+  const rows = composeRows.value
+  const cur = rows[rowIndex]
+  const prev = rows[rowIndex - 1]
+  if (!isComposeRow(cur) || !isComposeRow(prev)) return
   const merged = [...prev.items, ...cur.items]
   if (merged.length > 2) {
     ElMessage.warning('一行最多并排 2 道小题')
     return
   }
-  composeRows.value.splice(rowIndex - 1, 2, { key: prev.key, items: merged })
+  rows.splice(rowIndex - 1, 2, { key: prev.key, items: merged })
   persist()
 }
 
 /** 「拆开」按钮：把并排行拆成两行 */
 function splitRow(rowIndex: number): void {
   const row = composeRows.value[rowIndex]
-  if (!row || row.items.length < 2) return
+  if (!isComposeRow(row) || row.items.length < 2) return
   const extra: ComposeRow[] = row.items.slice(1).map((q) => ({ key: rowKey(), items: [q] }))
   row.items = [row.items[0]]
   composeRows.value.splice(rowIndex + 1, 0, ...extra)
@@ -177,7 +236,7 @@ function moveRow(rowIndex: number, dir: -1 | 1): void {
 
 function removeQuestion(rowIndex: number, qi: number): void {
   const row = composeRows.value[rowIndex]
-  if (!row) return
+  if (!isComposeRow(row)) return
   row.items.splice(qi, 1)
   if (!row.items.length) composeRows.value.splice(rowIndex, 1)
   persist()
@@ -532,11 +591,13 @@ const breakdown = computed(() => {
  * 连续题号：把卷面上所有小题按顺序编号。
  * rowIndex 行的第 qi 个小题 = 该行之前所有小题数 + qi + 1。
  * 阅读/古诗文并排的两问各占一个独立编号（如 5、6）。
+ * 全程用 rowsOf（已过滤非法行）并按防御性读法取 length，杜绝拖拽中间态抛错。
  */
 function numberAt(rowIndex: number, qi = 0): number {
+  const rows = rowsOf.value
   let n = 0
   for (let i = 0; i < rowIndex; i++) {
-    n += composeRows.value[i]?.items.length ?? 0
+    n += rows[i]?.items?.length ?? 0
   }
   return n + qi + 1
 }
@@ -624,23 +685,27 @@ onBeforeUnmount(() => {
           <span>试卷列表</span>
         </button>
         <span class="head-divider" />
-        <span class="head-badge">{{ paper?.paperType === 'LESSON' ? '课时题单' : '知识点卷' }}</span>
-        <span v-if="paper?.studentName" class="head-badge is-student">{{ paper.studentName }} 专属</span>
-      </div>
-
-      <div class="head-center">
-        <span class="save-state" :class="{ dirty, saving }">
-          <span class="save-dot" />
-          <template v-if="saving">保存中…</template>
-          <template v-else-if="dirty">有改动待保存</template>
-          <template v-else-if="lastSaved">已保存 {{ lastSaved }}</template>
-          <template v-else>自动保存已开启</template>
-        </span>
+        <div class="head-titles">
+          <span class="head-docname">{{ paper?.title || '未命名试卷' }}</span>
+          <span class="head-tags">
+            <span class="head-tag">{{ paper?.paperType === 'LESSON' ? '课时题单' : '知识点卷' }}</span>
+            <span v-if="paper?.studentName" class="head-tag is-student">{{ paper.studentName }}</span>
+            <span v-if="paper?.grade" class="head-tag">{{ paper.grade }}</span>
+          </span>
+        </div>
       </div>
 
       <div class="head-right">
-        <el-button size="small" class="head-btn" @click="openImport">从已有试卷导入</el-button>
-        <el-button size="small" class="head-btn" @click="openReuse()">整卷复用</el-button>
+        <span class="save-state" :class="{ dirty, saving }" :title="'自动保存已开启（⌘/Ctrl + S 立即保存）'">
+          <span class="save-dot" />
+          <template v-if="saving">保存中…</template>
+          <template v-else-if="dirty">待保存</template>
+          <template v-else-if="lastSaved">已保存 {{ lastSaved }}</template>
+          <template v-else>自动保存</template>
+        </span>
+        <span class="head-divider" />
+        <el-button size="small" class="head-btn" @click="openImport">导入题目</el-button>
+        <el-button size="small" class="head-btn" @click="openReuse()">复用为新卷</el-button>
         <el-button
           size="small"
           class="head-btn"
@@ -660,10 +725,7 @@ onBeforeUnmount(() => {
       <!-- ===================== 左：试题库 ===================== -->
       <aside class="pane pane-bank">
         <div class="pane-head">
-          <div class="pane-head-main">
-            <span class="pane-icon">库</span>
-            <span class="pane-title">试题库</span>
-          </div>
+          <span class="pane-title">试题库</span>
           <span class="pane-count">{{ bankTotal }} 题</span>
         </div>
 
@@ -699,7 +761,7 @@ onBeforeUnmount(() => {
           </div>
           <div class="bank-filter-foot">
             <button class="link-btn" @click="resetBankFilter">重置筛选</button>
-            <span class="bank-hint">拖到中间卷面即可加入</span>
+            <span class="bank-hint">拖拽或点「加入」都能放入卷面</span>
           </div>
         </div>
 
@@ -709,20 +771,37 @@ onBeforeUnmount(() => {
           :group="BANK_GROUP"
           item-key="id"
           :sort="false"
+          :clone="wrapAsRow"
           ghost-class="drag-ghost"
           chosen-class="drag-chosen"
+          @start="dragging = true"
+          @end="dragging = false"
         >
           <template #item="{ element: q }">
-            <div class="bank-card" :class="{ used: inPaper(q.id) }">
+            <div
+              class="bank-card"
+              :class="{ used: inPaper(q.id) }"
+              @dblclick="appendQuestion(q)"
+            >
               <div class="bank-card-head">
                 <span class="qtype-chip">{{ qtypeOf(q) || '其他' }}</span>
                 <span class="kp-name">{{ q.kpName || '未标知识点' }}</span>
-                <span v-if="inPaper(q.id)" class="used-chip">已在卷</span>
               </div>
               <div class="bank-stem">{{ stemBrief(q, 54) }}</div>
               <div class="bank-card-foot">
                 <span class="diff" :class="`d${q.difficulty}`">{{ DIFFICULTY_LABEL[q.difficulty] || '中' }}</span>
-                <button class="link-btn" @click.stop="openPreview(q)">预览</button>
+                <div class="bank-card-actions">
+                  <button class="link-btn" @click.stop="openPreview(q)">预览</button>
+                  <button
+                    v-if="!inPaper(q.id)"
+                    class="add-btn"
+                    title="加入卷面（也可直接拖过去）"
+                    @click.stop="appendQuestion(q)"
+                  >
+                    加入
+                  </button>
+                  <span v-else class="used-chip">已在卷</span>
+                </div>
               </div>
             </div>
           </template>
@@ -756,7 +835,8 @@ onBeforeUnmount(() => {
               共 <b>{{ counts.total }}</b> 题
               <span v-if="counts.edited" class="edited-hint">· {{ counts.edited }} 题已改</span>
             </span>
-            <el-button link size="small" :disabled="!counts.total" @click="clearAll">清空卷面</el-button>
+            <span class="toolbar-sep" />
+            <button class="tool-link" :disabled="!counts.total" @click="clearAll">清空卷面</button>
           </div>
         </div>
 
@@ -772,6 +852,7 @@ onBeforeUnmount(() => {
             <draggable
               v-model="composeRows"
               class="paper-rows"
+              :class="{ 'is-empty': !rowsOf.length, 'drag-over': dragging }"
               :group="PAPER_GROUP"
               item-key="key"
               handle=".drag-handle"
@@ -841,7 +922,7 @@ onBeforeUnmount(() => {
                     </button>
                     <button
                       class="side-btn"
-                      :disabled="rowIndex === composeRows.length - 1"
+                      :disabled="rowIndex === rowsOf.length - 1"
                       title="下移"
                       @click="moveRow(rowIndex, 1)"
                     >
@@ -852,11 +933,12 @@ onBeforeUnmount(() => {
               </template>
             </draggable>
 
-            <el-empty
-              v-if="!composeRows.length"
-              description="卷面还是空的，从左侧把题拖进来"
-              :image-size="80"
-            />
+            <!-- 空态：绝对定位覆盖在可拖区域上，不参与 Sortable 结构，保证空卷也能拖入 -->
+            <div v-if="!rowsOf.length" class="paper-empty">
+              <span class="paper-empty-icon">＋</span>
+              <p class="paper-empty-title">卷面还是空的</p>
+              <p class="paper-empty-sub">从左侧试题库按住题目拖到这里即可加入</p>
+            </div>
           </div>
         </div>
       </main>
@@ -864,17 +946,20 @@ onBeforeUnmount(() => {
       <!-- ===================== 右：组卷栏 ===================== -->
       <aside class="pane pane-side">
         <div class="pane-head">
-          <div class="pane-head-main">
-            <span class="pane-icon">卷</span>
-            <span class="pane-title">组卷信息</span>
-          </div>
+          <span class="pane-title">组卷信息</span>
         </div>
 
         <div class="side-block">
           <div class="side-label">卷面构成</div>
-          <div class="side-stat">
-            <span class="stat-num">{{ counts.total }}</span>
-            <span class="stat-unit">题</span>
+          <div class="side-stat-row">
+            <div class="side-stat">
+              <span class="stat-num">{{ counts.total }}</span>
+              <span class="stat-unit">题</span>
+            </div>
+            <div v-if="counts.edited" class="side-stat-sub">
+              <span class="stat-sub-num">{{ counts.edited }}</span>
+              <span class="stat-sub-unit">题卷内已改</span>
+            </div>
           </div>
           <div class="side-rows">
             <div v-for="s in breakdown" :key="s.type" class="side-row">
@@ -906,18 +991,14 @@ onBeforeUnmount(() => {
               {{ paper?.status === 'READY' ? '可用' : '草稿' }}
             </span>
           </div>
-          <div v-if="counts.edited" class="side-field">
-            <span>卷内已改</span>
-            <span class="side-text">{{ counts.edited }} 题</span>
-          </div>
         </div>
 
         <div class="side-block">
           <div class="side-label">快捷操作</div>
           <div class="side-ops">
             <el-button size="small" :loading="saving" @click="doSave">立即保存</el-button>
-            <el-button size="small" @click="openImport">从已有试卷导入</el-button>
-            <el-button size="small" @click="openReuse()">整卷复用为新卷</el-button>
+            <el-button size="small" @click="openImport">导入题目</el-button>
+            <el-button size="small" @click="openReuse()">复用为新卷</el-button>
             <el-button size="small" type="primary" plain @click="printPaper">打印 / 导出 PDF</el-button>
           </div>
           <p class="side-tip">
@@ -1133,10 +1214,46 @@ export default {}
   align-items: center;
   gap: 10px;
 }
-.head-center {
+.head-left {
+  min-width: 0;
   flex: 1;
+}
+.head-titles {
   display: flex;
-  justify-content: center;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+.head-docname {
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--text-strong);
+  letter-spacing: 0.2px;
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.head-tags {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+.head-tag {
+  font-size: 11.5px;
+  padding: 2px 8px;
+  border-radius: var(--radius-xs);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.head-tag.is-student {
+  background: rgba(245, 158, 11, 0.1);
+  border-color: rgba(245, 158, 11, 0.2);
+  color: #b45309;
 }
 .back-btn {
   display: inline-flex;
@@ -1150,6 +1267,7 @@ export default {}
   font-size: 13px;
   cursor: pointer;
   transition: all 0.15s;
+  flex: none;
 }
 .back-btn:hover {
   background: var(--surface-sunken);
@@ -1164,24 +1282,13 @@ export default {}
   width: 1px;
   height: 18px;
   background: var(--border-base);
-}
-.head-badge {
-  font-size: 12px;
-  padding: 3px 10px;
-  border-radius: var(--radius-pill);
-  background: var(--grad-brand-soft);
-  color: var(--brand-700);
-  font-weight: 500;
-}
-.head-badge.is-student {
-  background: rgba(245, 158, 11, 0.12);
-  color: #b45309;
+  flex: none;
 }
 .head-btn {
   font-weight: 500;
 }
 .head-print {
-  box-shadow: 0 2px 8px rgba(79, 70, 229, 0.24);
+  box-shadow: 0 2px 8px rgba(79, 70, 229, 0.22);
 }
 .save-state {
   display: inline-flex;
@@ -1243,33 +1350,31 @@ export default {}
 }
 .pane-head {
   flex: none;
-  padding: 13px 16px;
+  padding: 12px 16px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   border-bottom: 1px solid var(--border-subtle);
 }
-.pane-head-main {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.pane-icon {
-  width: 22px;
-  height: 22px;
-  display: grid;
-  place-items: center;
-  border-radius: 7px;
-  background: var(--grad-brand-soft);
-  color: var(--brand-600);
-  font-size: 12px;
-  font-weight: 700;
-}
 .pane-title {
   font-weight: 600;
-  font-size: 14px;
+  font-size: 13.5px;
   color: var(--text-strong);
-  letter-spacing: 0.2px;
+  letter-spacing: 0.3px;
+  position: relative;
+  padding-left: 10px;
+}
+/* 标题左侧一小段品牌色细线，替代整块图标徽章（更克制、少"模板感"） */
+.pane-title::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 13px;
+  border-radius: 2px;
+  background: var(--brand-500);
 }
 .pane-count {
   font-size: 12px;
@@ -1341,24 +1446,34 @@ export default {}
   box-shadow: var(--shadow-card);
   transform: translateY(-1px);
 }
+.bank-card:active {
+  cursor: grabbing;
+}
 .bank-card.used {
   background: var(--surface-sunken);
   border-style: dashed;
+  opacity: 0.75;
+}
+.bank-card.used:hover {
+  transform: none;
+  box-shadow: none;
 }
 .bank-card-head {
   display: flex;
   align-items: center;
   gap: 6px;
   margin-bottom: 6px;
+  min-width: 0;
 }
 .qtype-chip {
   flex: none;
   font-size: 11px;
   font-weight: 600;
   padding: 2px 8px;
-  border-radius: var(--radius-pill);
-  background: var(--grad-brand-soft);
+  border-radius: var(--radius-xs);
+  background: var(--brand-50);
   color: var(--brand-700);
+  border: 1px solid var(--brand-100);
 }
 .kp-name {
   font-size: 11px;
@@ -1368,7 +1483,6 @@ export default {}
   white-space: nowrap;
 }
 .used-chip {
-  margin-left: auto;
   flex: none;
   font-size: 11px;
   color: var(--success);
@@ -1387,6 +1501,30 @@ export default {}
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
+}
+.bank-card-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+/* 「加入」小按钮：拖拽之外的顺手指径 */
+.add-btn {
+  border: 1px solid var(--brand-200);
+  background: var(--brand-50);
+  color: var(--brand-700);
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.add-btn:hover {
+  background: var(--brand-500);
+  border-color: var(--brand-500);
+  color: #fff;
 }
 .diff {
   font-size: 11px;
@@ -1411,8 +1549,8 @@ export default {}
 }
 .paper-toolbar {
   flex: none;
-  height: 52px;
-  padding: 0 18px;
+  height: 48px;
+  padding: 0 20px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1421,7 +1559,7 @@ export default {}
 }
 .paper-title {
   margin: 0;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 600;
   color: var(--text-strong);
   cursor: text;
@@ -1447,18 +1585,41 @@ export default {}
 .paper-toolbar-right {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
 }
 .paper-count {
   font-size: 12.5px;
   color: var(--text-muted);
 }
 .paper-count b {
-  color: var(--brand-600);
+  color: var(--text-strong);
   font-size: 14px;
 }
 .edited-hint {
   color: #b45309;
+}
+.toolbar-sep {
+  width: 1px;
+  height: 14px;
+  background: var(--border-base);
+}
+.tool-link {
+  border: none;
+  background: none;
+  padding: 2px 4px;
+  font-size: 12.5px;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: var(--radius-xs);
+  transition: all 0.15s;
+}
+.tool-link:hover:not(:disabled) {
+  color: var(--danger);
+  background: rgba(239, 68, 68, 0.07);
+}
+.tool-link:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 .paper-canvas {
   flex: 1;
@@ -1468,6 +1629,7 @@ export default {}
 }
 /* 纸张质感：白色卷面浮在灰底上 */
 .paper-sheet {
+  position: relative;
   max-width: 860px;
   margin: 0 auto;
   background: var(--paper-bg);
@@ -1513,6 +1675,64 @@ export default {}
   display: flex;
   flex-direction: column;
   gap: 10px;
+  /* 空卷时也要保持可拖入的面积：Sortable 靠容器 rect 判定落点，
+     高度塌成 0 会导致 emptyInsertThreshold 永远命中不到。 */
+  min-height: 60px;
+}
+.paper-rows.is-empty {
+  min-height: 240px;
+  border: 1.5px dashed var(--border-base);
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+  transition: border-color 0.15s, background 0.15s;
+}
+/* 拖拽经过空卷面时高亮落点 */
+.paper-rows.is-empty:hover,
+.paper-rows.is-empty.drag-over {
+  border-color: var(--brand-400);
+  background: rgba(99, 102, 241, 0.06);
+}
+/* 从题库拖拽中：给卷面一个呼吸式提示描边（仅在卷面为空时显示，避免干扰已有题目的重排） */
+.paper-rows.drag-over:not(.is-empty) {
+  outline: 2px dashed var(--brand-300);
+  outline-offset: 4px;
+  border-radius: var(--radius-md);
+}
+.paper-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  pointer-events: none;
+  color: var(--text-faint);
+}
+.paper-empty-icon {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1.5px dashed var(--border-base);
+  color: var(--brand-400);
+  font-size: 20px;
+  line-height: 1;
+  margin-bottom: 2px;
+}
+.paper-empty-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-muted);
+  font-family: system-ui, -apple-system, 'PingFang SC', sans-serif;
+}
+.paper-empty-sub {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-faint);
+  font-family: system-ui, -apple-system, 'PingFang SC', sans-serif;
 }
 .paper-row {
   display: flex;
@@ -1670,7 +1890,12 @@ export default {}
   flex: none;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.paper-row:hover .row-side {
+  opacity: 1;
 }
 .side-btn {
   width: 22px;
@@ -1680,6 +1905,7 @@ export default {}
   background: var(--surface);
   color: var(--text-muted);
   font-size: 11px;
+  line-height: 1;
   cursor: pointer;
   transition: all 0.15s;
 }
@@ -1720,22 +1946,44 @@ export default {}
   margin-bottom: 12px;
   letter-spacing: 0.4px;
 }
+.side-stat-row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
 .side-stat {
   display: flex;
   align-items: baseline;
   gap: 5px;
-  margin-bottom: 12px;
 }
 .stat-num {
-  font-size: 32px;
+  font-size: 30px;
   font-weight: 700;
   color: var(--text-strong);
   line-height: 1;
   font-family: 'Inter', sans-serif;
+  letter-spacing: -0.5px;
 }
 .stat-unit {
   font-size: 12px;
   color: var(--text-muted);
+}
+.side-stat-sub {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  padding-bottom: 3px;
+}
+.stat-sub-num {
+  font-size: 15px;
+  font-weight: 700;
+  color: #b45309;
+  font-family: 'Inter', sans-serif;
+}
+.stat-sub-unit {
+  font-size: 11px;
+  color: #b45309;
 }
 .side-rows {
   display: flex;

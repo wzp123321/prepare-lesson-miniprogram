@@ -133,3 +133,29 @@
   要验页面行为，改为验**数据源**（对应 REST 接口的响应字段），或起 `SERVER_PORT=18888` 的真后端。
 - 前端改动后的标准三连：`npx vue-tsc --noEmit` → `npx vite build` → 抽查产物里关键 CSS 规则是否存在。
 
+
+## vuedraggable 拖拽定式（2026-10-10 制卷台三连修，务必沿用）
+- **`:clone` 取自「拖拽源」那一侧的 draggable，不是目标侧**（`vuedraggable.js` `onDragStart` L235 设
+  `evt.item._underlying_vm_ = this.clone(...)`；目标侧 `onDragAdd` L246 直接 splice 这个值）。
+  → 两侧列表元素类型不同时（如「题库 Question[] → 卷面 ComposeRow[]」），**必须两侧都挂同一个 `:clone` 包装函数**，
+  否则裸源元素进目标列表 → 读其缺失字段抛 `Cannot read properties of undefined`。
+- **空列表拖不进**：Sortable 判定落点靠容器 `getBoundingClientRect()` + `emptyInsertThreshold`(默认 5px)。
+  空 flex 容器高度塌成 **0** → 永远命中不到。→ 空容器必须给 `min-height`（制卷台给 240px）。
+- **空态提示不要用兄弟节点**（`el-empty` 放 draggable 外面）——它不占 draggable 面积也不参与判定；
+  改成**绝对定位覆盖层**放在容器内、`pointer-events:none`，父加 `position:relative`。
+- 第二道防线：目标列表侧永远保留 `isXxxRow()` 类型守卫 + `rowsOf` computed(过滤) + `normalizeRow()`；
+  落库/渲染前 `arr = arr.map(normalizeRow)`；所有 `.length` 读法用 `?.items?.length ?? 0`。
+- agent-browser 可跑真机拖拽验证：`agent-browser drag "<src>" "<dst>"`（首次 open 冷启动约数分钟，之后秒回）。
+
+## 后端实例陈旧坑（高频）
+- 用户常驻后端在 **18899**；改完后端代码后**必须先重启它**，否则接口可能返回 `code:0 success` 却**不落库**
+  （实测：旧实例 `papers/questions/set` 假成功，`paper_question` 无行、`updateTime` 不变）。
+- 独立验证一律起临时实例 `SERVER_PORT=18888 mvn -o spring-boot:run`（离线也 OK），别动 18899。
+- 前端 dev 在 18887（vite）。三者端口别混。
+
+## 制卷台 UI 基调（用户认可，2026-10-10）
+- 去 AI 味取向：**少用紫色渐变/色块徽章**；标题用「左侧 3px 品牌色细线」代替方块图标；
+  chip 用 `brand-50` 底 + `brand-100` 描边而非渐变；顶栏不要「漂在正中间」的状态胶囊，
+  改成左=文档信息(卷名+标签)、右=保存态+操作按钮组。
+- 行内操作（编辑/移出/↑↓/并排拆开）一律 **hover 才显示**，避免每行挂一排按钮的机械感。
+- 除拖拽外提供**点选加入**路径（卡片「加入」按钮 + 双击），是用户认的省事交互。
